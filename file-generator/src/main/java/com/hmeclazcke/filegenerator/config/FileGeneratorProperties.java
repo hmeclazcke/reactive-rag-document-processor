@@ -7,6 +7,7 @@ import java.nio.file.Path;
 @ConfigurationProperties(prefix = "file-generator")
 public record FileGeneratorProperties(
         Path datasetPath,
-        long minimumSizeBytes
+        long minimumSizeBytes,
+        String seedResourcePath
 ) {
 }

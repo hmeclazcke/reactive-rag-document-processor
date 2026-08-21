@@ -1,0 +1,20 @@
+Spring WebFlux supports reactive applications using non blocking streams.
+Project Reactor provides Flux and Mono for asynchronous pipelines.
+Backpressure helps consumers control the speed of incoming data.
+MongoDB can store document processing results using a reactive driver.
+Docker packages applications with their runtime dependencies.
+Kubernetes Jobs can run containers until their task is complete.
+A file processor can read large documents without loading them into memory.
+A coordinator can split work into chunks and assign them to workers.
+Qdrant stores embeddings for semantic document search.
+RAG retrieves relevant text before asking a language model to answer.
+Embeddings represent the meaning of text as numeric vectors.
+Gemini can generate short seed texts without creating the full dataset.
+Weather forecasts help people plan outdoor activities.
+Personal finance requires tracking income expenses and savings.
+Healthy meals often include vegetables grains proteins and water.
+Travel planning involves routes schedules budgets and local customs.
+History connects past events with decisions that shaped societies.
+Cooking recipes describe ingredients quantities and preparation steps.
+Sports teams improve through training strategy and consistent practice.
+Libraries organize books documents and digital knowledge for readers.

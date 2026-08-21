@@ -1,3 +1,4 @@
 file-generator:
   dataset-path: ${DATASET_PATH:./data/dataset.txt}
-  minimum-size-bytes: ${DATASET_MINIMUM_SIZE_BYTES:128}
+  minimum-size-bytes: ${DATASET_MINIMUM_SIZE_BYTES:1048576}
+  seed-resource-path: ${SEED_RESOURCE_PATH:/dataset-seeds/local-seeds.txt}

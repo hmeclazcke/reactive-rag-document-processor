@@ -1,6 +1,7 @@
 package com.hmeclazcke.filegenerator.adapter.out.filesystem;
 
 import com.hmeclazcke.filegenerator.application.port.out.DatasetFilePort;
+import com.hmeclazcke.filegenerator.application.port.out.TextSeedProviderPort;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;
@@ -13,8 +14,11 @@ public class FileSystemDatasetFileAdapter implements DatasetFilePort {
 
     private static final String COULD_NOT_CREATE_DATASET_FILE = "Could not create dataset file";
 
-    // The sample line must end with a line break so generated datasets do not cut words.
-    private static final String SAMPLE_LINE = "java spring reactor mongo docker kubernetes\n";
+    private final TextSeedProviderPort textSeedProvider;
+
+    public FileSystemDatasetFileAdapter(TextSeedProviderPort textSeedProvider) {
+        this.textSeedProvider = textSeedProvider;
+    }
 
     @Override
     public boolean exists(Path datasetPath) {
@@ -47,10 +51,11 @@ public class FileSystemDatasetFileAdapter implements DatasetFilePort {
     }
 
     private void writeLinesUntilMinimumSize(OutputStream outputStream, long minimumSizeBytes) throws IOException {
-        byte[] lineBytes = SAMPLE_LINE.getBytes(StandardCharsets.UTF_8);
         long writtenBytes = 0;
 
         while (writtenBytes < minimumSizeBytes) {
+            byte[] lineBytes = textSeedProvider.nextLine().getBytes(StandardCharsets.UTF_8);
+
             outputStream.write(lineBytes);
             writtenBytes += lineBytes.length;
         }
