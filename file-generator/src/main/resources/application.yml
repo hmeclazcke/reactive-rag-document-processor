@@ -1,0 +1,3 @@
+file-generator:
+  dataset-path: ${DATASET_PATH:./data/dataset.txt}
+  minimum-size-bytes: ${DATASET_MINIMUM_SIZE_BYTES:128}

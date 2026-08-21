@@ -12,6 +12,7 @@ import java.nio.file.Path;
 public class FileSystemDatasetFileAdapter implements DatasetFilePort {
 
     private static final String COULD_NOT_CREATE_DATASET_FILE = "Could not create dataset file";
+
     // The sample line must end with a line break so generated datasets do not cut words.
     private static final String SAMPLE_LINE = "java spring reactor mongo docker kubernetes\n";
 
@@ -22,10 +23,26 @@ public class FileSystemDatasetFileAdapter implements DatasetFilePort {
 
     @Override
     public void create(Path datasetPath, long minimumSizeBytes) {
-        try (OutputStream outputStream = new BufferedOutputStream(Files.newOutputStream(datasetPath))) {
-            writeLinesUntilMinimumSize(outputStream, minimumSizeBytes);
+        try {
+            createDatasetFile(datasetPath, minimumSizeBytes);
         } catch (IOException exception) {
             throw new IllegalStateException(COULD_NOT_CREATE_DATASET_FILE, exception);
+        }
+    }
+
+    private void createDatasetFile(Path datasetPath, long minimumSizeBytes) throws IOException {
+        createParentDirectories(datasetPath);
+
+        try (OutputStream outputStream = new BufferedOutputStream(Files.newOutputStream(datasetPath))) {
+            writeLinesUntilMinimumSize(outputStream, minimumSizeBytes);
+        }
+    }
+
+    private void createParentDirectories(Path datasetPath) throws IOException {
+        Path parentDirectory = datasetPath.getParent();
+
+        if (parentDirectory != null) {
+            Files.createDirectories(parentDirectory);
         }
     }
 

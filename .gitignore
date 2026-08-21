@@ -14,6 +14,7 @@ build/
 *.jar
 *.war
 *.ear
+!gradle/wrapper/gradle-wrapper.jar
 
 # Logs
 *.log
@@ -26,3 +27,6 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Local Spring profiles
+**/application-local.yml

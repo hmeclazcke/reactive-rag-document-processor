@@ -56,4 +56,15 @@ class FileSystemDatasetFileAdapterTest {
 
         assertTrue(content.endsWith(System.lineSeparator()) || content.endsWith("\n"));
     }
+
+    @Test
+    void createsParentDirectoriesWhenTheyDoNotExist() throws Exception {
+        Path datasetPath = tempDir.resolve("datasets/generated/dataset.txt");
+        long minimumSizeBytes = 128;
+        FileSystemDatasetFileAdapter adapter = new FileSystemDatasetFileAdapter();
+
+        adapter.create(datasetPath, minimumSizeBytes);
+
+        assertTrue(Files.exists(datasetPath));
+    }
 }
