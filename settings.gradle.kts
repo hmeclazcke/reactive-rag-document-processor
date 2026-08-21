@@ -13,7 +13,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "reactive-file-processor"
+rootProject.name = "reactive-rag-document-processor"
 
 include("file-generator")
 include("file-coordinator")
