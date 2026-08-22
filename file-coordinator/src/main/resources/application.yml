@@ -1,0 +1,5 @@
+file-coordinator:
+  dataset-path: ${DATASET_PATH:./data/dataset.txt}
+
+  # 5 MB default chunk size for local testing.
+  chunk-size-bytes: ${CHUNK_SIZE_BYTES:5242880}

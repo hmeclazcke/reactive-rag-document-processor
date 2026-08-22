@@ -18,6 +18,7 @@ public class FileGeneratorConfiguration {
     public DatasetFilePort datasetFilePort(TextSeedProviderPort textSeedProvider) {
         return new FileSystemDatasetFileAdapter(textSeedProvider);
     }
+
     @Bean
     public DatasetGenerator datasetGenerator(DatasetFilePort datasetFilePort) {
         return new DatasetGenerator(datasetFilePort);
