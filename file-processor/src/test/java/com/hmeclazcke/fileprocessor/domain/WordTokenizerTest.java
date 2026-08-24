@@ -23,4 +23,11 @@ class WordTokenizerTest {
 
         assertEquals(List.of("java", "reactor"), words);
     }
+
+    @Test
+    void keepsUnicodeLettersInsideWords() {
+        List<String> words = tokenizer.tokenize("Ábaco niño");
+
+        assertEquals(List.of("ábaco", "niño"), words);
+    }
 }

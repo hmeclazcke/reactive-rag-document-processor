@@ -15,6 +15,11 @@ class WordCharacterClassifierTest {
         assertTrue(classifier.isWordCharacter('z'));
         assertTrue(classifier.isWordCharacter('0'));
         assertTrue(classifier.isWordCharacter('9'));
+        assertTrue(classifier.isWordCharacter('A'));
+        assertTrue(classifier.isWordCharacter('Z'));
+        assertTrue(classifier.isWordCharacter('á'));
+        assertTrue(classifier.isWordCharacter('ñ'));
+        assertTrue(classifier.isWordCharacter('İ'));
     }
 
     @Test
