@@ -5,6 +5,7 @@ import com.hmeclazcke.fileprocessor.domain.FileChunk;
 import com.hmeclazcke.fileprocessor.domain.WordCharacterClassifier;
 import com.hmeclazcke.fileprocessor.domain.WordTooLongException;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.SynchronousSink;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
@@ -15,127 +16,233 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
 
     private static final String READ_MODE = "r";
     private static final String COULD_NOT_READ_CHUNK_TEXT = "Could not read chunk text";
-    private static final int DEFAULT_MAX_WORD_EXTENSION_BYTES = 1024 * 1024;
-    private final int maxWordExtensionBytes;
 
     private final WordCharacterClassifier characterClassifier = new WordCharacterClassifier();
+    private final ChunkTextReaderSettings settings;
 
-    public FileSystemChunkTextReaderAdapter() {
-        this(DEFAULT_MAX_WORD_EXTENSION_BYTES);
-    }
-
-    public FileSystemChunkTextReaderAdapter(int maxWordExtensionBytes) {
-        this.maxWordExtensionBytes = maxWordExtensionBytes;
+    public FileSystemChunkTextReaderAdapter(ChunkTextReaderSettings settings) {
+        this.settings = settings;
     }
 
     @Override
     public Flux<String> readText(Path datasetPath, FileChunk chunk) {
-
         // Create the file-reading Flux only when someone subscribes to it.
         return Flux.defer(() -> {
             try {
-                return Flux.just(readChunkText(datasetPath, chunk));
+                ChunkTextFileReader reader = new ChunkTextFileReader(datasetPath, chunk);
+
+                // Flux.generate emits one fragment at a time, tied to downstream demand.
+                // The internal buffer size controls each fragment size, so we do not load the whole chunk into memory.
+                return Flux.<String>generate(reader::readNextFragment)
+                        // Close the RandomAccessFile when the Flux completes, fails, or gets cancelled.
+                        .doFinally(signalType -> reader.close());
             } catch (IOException exception) {
                 return Flux.error(new IllegalStateException(COULD_NOT_READ_CHUNK_TEXT, exception));
             }
-          // RandomAccessFile is blocking, so run this Flux on Reactor's boundedElastic thread pool.
+            // RandomAccessFile is blocking, so run this Flux on Reactor's boundedElastic thread pool.
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
-    // Each word is counted by the chunk where that word starts.
-    private String readChunkText(Path datasetPath, FileChunk chunk) throws IOException {
-        try (RandomAccessFile file = new RandomAccessFile(datasetPath.toFile(), READ_MODE)) {
+    // One instance is created per readText subscription and keeps that read's file position/state.
+    private final class ChunkTextFileReader {
 
-            // Jump directly to the assigned chunk start instead of reading the file from the beginning.
-            file.seek(chunk.startByteInclusive());
+        private final RandomAccessFile file;
+        private final FileChunk chunk;
 
-            skipFirstWordFragmentIfNeeded(file, chunk);
+        // Keeps the beginning of a word when an internal buffer ends before that word is complete.
+        private String carriedWordFragment = "";
+        private boolean initialized;
+        private boolean completed;
 
-            StringBuilder text = new StringBuilder();
-
-            // First read the exact byte range assigned by the coordinator.
-            readConfiguredRange(file, chunk, text);
-
-            // If the range ended in the middle of a word, read a little further to finish it.
-            completeLastWord(file, text);
-
-            return text.toString();
+        private ChunkTextFileReader(Path datasetPath, FileChunk chunk) throws IOException {
+            this.file = new RandomAccessFile(datasetPath.toFile(), READ_MODE);
+            this.chunk = chunk;
         }
-    }
 
-    private void readConfiguredRange(RandomAccessFile file, FileChunk chunk, StringBuilder text) throws IOException {
-        long bytesToRead = chunk.endByteExclusive() - chunk.startByteInclusive();
+        private void readNextFragment(SynchronousSink<String> sink) {
+            try {
+                String fragment = readNextFragment();
 
-        for (long i = 0; i < bytesToRead; i++) {
-            int nextByte = file.read();
+                if (fragment == null) {
+                    sink.complete();
+                    return;
+                }
 
-            if (nextByte == -1) {
+                sink.next(fragment);
+            } catch (IOException exception) {
+                sink.error(new IllegalStateException(COULD_NOT_READ_CHUNK_TEXT, exception));
+            } catch (RuntimeException exception) {
+                sink.error(exception);
+            }
+        }
+
+        private String readNextFragment() throws IOException {
+            if (!initialized) {
+                moveToFirstOwnedByte();
+                initialized = true;
+            }
+
+            while (!completed) {
+                String fragment = readNextFragmentCandidate();
+
+                if (!fragment.isEmpty()) {
+                    return fragment;
+                }
+            }
+
+            return null;
+        }
+
+        private String readNextFragmentCandidate() throws IOException {
+            if (file.getFilePointer() >= chunk.endByteExclusive()) {
+                completed = true;
+                return carriedWordFragment;
+            }
+
+            StringBuilder candidate = new StringBuilder(carriedWordFragment);
+            carriedWordFragment = "";
+
+            readUpToBufferOrChunkEnd(candidate);
+
+            if (file.getFilePointer() >= chunk.endByteExclusive()) {
+                completeLastWord(candidate);
+                completed = true;
+                return candidate.toString();
+            }
+
+            return splitCandidateWithoutCuttingWord(candidate);
+        }
+
+        // Each word is counted by the chunk where that word starts.
+        private void moveToFirstOwnedByte() throws IOException {
+            if (chunk.startByteInclusive() == 0) {
+                file.seek(chunk.startByteInclusive());
                 return;
             }
 
-            text.append((char) nextByte);
-        }
-    }
+            file.seek(chunk.startByteInclusive() - 1);
+            int previousByte = file.read();
+            int currentByte = file.read();
 
-    private void completeLastWord(RandomAccessFile file, StringBuilder text) throws IOException {
-        // Nothing to complete when the chunk is empty or already ends with a separator.
-        if (text.isEmpty() || !characterClassifier.isWordCharacter(text.charAt(text.length() - 1))) {
-            return;
-        }
-
-        int extendedBytes = 0;
-        int nextByte = file.read();
-
-        // Keep reading until the first separator or end of file.
-        while (nextByte != -1 && characterClassifier.isWordCharacter((char) nextByte)) {
-
-            // Protect the processor from malformed text with an extremely long word.
-            if (extendedBytes >= maxWordExtensionBytes) {
-                throw new WordTooLongException();
+            if (!isMiddleOfWord(previousByte, currentByte)) {
+                file.seek(chunk.startByteInclusive());
+                return;
             }
 
-            text.append((char) nextByte);
-            extendedBytes++;
-            nextByte = file.read();
-        }
-    }
-
-    private void skipFirstWordFragmentIfNeeded(RandomAccessFile file, FileChunk chunk) throws IOException {
-        if (chunk.startByteInclusive() == 0) {
-            return;
-        }
-
-        file.seek(chunk.startByteInclusive() - 1);
-        int previousByte = file.read();
-        int currentByte = file.read();
-
-        if (!isMiddleOfWord(previousByte, currentByte)) {
             file.seek(chunk.startByteInclusive());
-            return;
+            skipUntilSeparator();
         }
 
-        skipUntilSeparator(file);
-    }
+        private boolean isMiddleOfWord(int previousByte, int currentByte) {
+            return previousByte != -1
+                    && currentByte != -1
+                    && characterClassifier.isWordCharacter((char) previousByte)
+                    && characterClassifier.isWordCharacter((char) currentByte);
+        }
 
-    private boolean isMiddleOfWord(int previousByte, int currentByte) {
-        return previousByte != -1
-                && currentByte != -1
-                && characterClassifier.isWordCharacter((char) previousByte)
-                && characterClassifier.isWordCharacter((char) currentByte);
-    }
+        private void skipUntilSeparator() throws IOException {
+            int skippedBytes = 0;
+            int nextByte = file.read();
 
-    private void skipUntilSeparator(RandomAccessFile file) throws IOException {
-        int skippedBytes = 0;
-        int nextByte = file.read();
+            while (nextByte != -1 && characterClassifier.isWordCharacter((char) nextByte)) {
+                // Protect the processor from malformed text with an extremely long word.
+                if (skippedBytes >= settings.maxWordLengthBytes()) {
+                    throw new WordTooLongException();
+                }
 
-        while (nextByte != -1 && characterClassifier.isWordCharacter((char) nextByte)) {
-            // Protect the processor from malformed text with an extremely long word.
-            if (skippedBytes >= maxWordExtensionBytes) {
-                throw new WordTooLongException();
+                skippedBytes++;
+                nextByte = file.read();
+            }
+        }
+
+        private void readUpToBufferOrChunkEnd(StringBuilder text) throws IOException {
+            long remainingChunkBytes = chunk.endByteExclusive() - file.getFilePointer();
+            long bytesToRead = Math.min(settings.bufferSizeBytes(), remainingChunkBytes);
+
+            for (long i = 0; i < bytesToRead; i++) {
+                int nextByte = file.read();
+
+                if (nextByte == -1) {
+                    completed = true;
+                    return;
+                }
+
+                text.append((char) nextByte);
+            }
+        }
+
+        private String splitCandidateWithoutCuttingWord(StringBuilder candidate) {
+            int lastSeparatorIndex = lastSeparatorIndex(candidate);
+
+            if (lastSeparatorIndex == -1) {
+                carriedWordFragment = candidate.toString();
+                failIfWordIsTooLong(carriedWordFragment.length());
+                return "";
             }
 
-            skippedBytes++;
-            nextByte = file.read();
+            carriedWordFragment = candidate.substring(lastSeparatorIndex + 1);
+            failIfWordIsTooLong(carriedWordFragment.length());
+
+            return candidate.substring(0, lastSeparatorIndex + 1);
+        }
+
+        private int lastSeparatorIndex(StringBuilder text) {
+            for (int index = text.length() - 1; index >= 0; index--) {
+                if (!characterClassifier.isWordCharacter(text.charAt(index))) {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private void completeLastWord(StringBuilder text) throws IOException {
+            int currentWordLength = trailingWordLength(text);
+
+            if (currentWordLength == 0) {
+                return;
+            }
+
+            failIfWordIsTooLong(currentWordLength);
+
+            int nextByte = file.read();
+
+            while (nextByte != -1 && characterClassifier.isWordCharacter((char) nextByte)) {
+                // Read past the configured end only to finish the current word.
+                currentWordLength++;
+                failIfWordIsTooLong(currentWordLength);
+
+                text.append((char) nextByte);
+                nextByte = file.read();
+            }
+        }
+
+        private int trailingWordLength(StringBuilder text) {
+            int wordLength = 0;
+
+            for (int index = text.length() - 1; index >= 0; index--) {
+                if (!characterClassifier.isWordCharacter(text.charAt(index))) {
+                    return wordLength;
+                }
+
+                wordLength++;
+            }
+
+            return wordLength;
+        }
+
+        private void failIfWordIsTooLong(int wordLength) {
+            if (wordLength > settings.maxWordLengthBytes()) {
+                throw new WordTooLongException();
+            }
+        }
+
+        private void close() {
+            try {
+                file.close();
+            } catch (IOException exception) {
+                throw new IllegalStateException(COULD_NOT_READ_CHUNK_TEXT, exception);
+            }
         }
     }
 }
