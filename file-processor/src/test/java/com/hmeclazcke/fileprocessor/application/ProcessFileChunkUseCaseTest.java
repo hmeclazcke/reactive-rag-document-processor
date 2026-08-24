@@ -6,12 +6,12 @@ import com.hmeclazcke.fileprocessor.domain.PartialWordCount;
 import com.hmeclazcke.fileprocessor.domain.WordCounter;
 import com.hmeclazcke.fileprocessor.domain.WordTokenizer;
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
+import reactor.test.StepVerifier;
 
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -27,20 +27,20 @@ class ProcessFileChunkUseCaseTest {
         Path datasetPath = Path.of("dataset.txt");
         FileChunk chunk = new FileChunk(2, 100, 200);
 
-        when(textReader.readText(datasetPath, chunk)).thenReturn(List.of(
+        when(textReader.readText(datasetPath, chunk)).thenReturn(Flux.just(
                 "java reactor",
                 "java mongo"
         ));
 
-        PartialWordCount result = useCase.process(datasetPath, chunk);
-
-        assertEquals(new PartialWordCount(
-                chunk.index(),
-                Map.of(
-                        "java", 2L,
-                        "reactor", 1L,
-                        "mongo", 1L
-                )
-        ), result);
+        StepVerifier.create(useCase.process(datasetPath, chunk))
+                .expectNext(new PartialWordCount(
+                        chunk.index(),
+                        Map.of(
+                                "java", 2L,
+                                "reactor", 1L,
+                                "mongo", 1L
+                        )
+                ))
+                .verifyComplete();
     }
 }

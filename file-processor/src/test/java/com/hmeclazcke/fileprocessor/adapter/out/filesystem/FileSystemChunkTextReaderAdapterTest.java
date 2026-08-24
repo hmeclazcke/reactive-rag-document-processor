@@ -1,15 +1,13 @@
 package com.hmeclazcke.fileprocessor.adapter.out.filesystem;
 
 import com.hmeclazcke.fileprocessor.domain.FileChunk;
+import com.hmeclazcke.fileprocessor.domain.WordTooLongException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import reactor.test.StepVerifier;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class FileSystemChunkTextReaderAdapterTest {
 
@@ -25,9 +23,9 @@ class FileSystemChunkTextReaderAdapterTest {
 
         FileChunk chunk = new FileChunk(0, 0, 7);
 
-        List<String> textFragments = adapter.readText(datasetPath, chunk);
-
-        assertEquals(List.of("java spring"), textFragments);
+        StepVerifier.create(adapter.readText(datasetPath, chunk))
+                .expectNext("java spring")
+                .verifyComplete();
     }
 
     @Test
@@ -39,9 +37,9 @@ class FileSystemChunkTextReaderAdapterTest {
 
         FileChunk chunk = new FileChunk(1, 7, 15);
 
-        List<String> textFragments = adapter.readText(datasetPath, chunk);
-
-        assertEquals(List.of("reactor"), textFragments);
+        StepVerifier.create(adapter.readText(datasetPath, chunk))
+                .expectNext("reactor")
+                .verifyComplete();
     }
 
     @Test
@@ -53,12 +51,9 @@ class FileSystemChunkTextReaderAdapterTest {
 
         FileChunk chunk = new FileChunk(0, 0, 9);
 
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> adapter.readText(datasetPath, chunk)
-        );
-
-        assertEquals("Word exceeds maximum supported length", exception.getMessage());
+        StepVerifier.create(adapter.readText(datasetPath, chunk))
+                .expectError(WordTooLongException.class)
+                .verify();
     }
 
     @Test
@@ -70,12 +65,9 @@ class FileSystemChunkTextReaderAdapterTest {
 
         FileChunk chunk = new FileChunk(1, 4, 12);
 
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> adapter.readText(datasetPath, chunk)
-        );
-
-        assertEquals("Word exceeds maximum supported length", exception.getMessage());
+        StepVerifier.create(adapter.readText(datasetPath, chunk))
+                .expectError(WordTooLongException.class)
+                .verify();
     }
 
     @Test
@@ -87,9 +79,9 @@ class FileSystemChunkTextReaderAdapterTest {
 
         FileChunk chunk = new FileChunk(1, 4, 11);
 
-        List<String> textFragments = adapter.readText(datasetPath, chunk);
-
-        assertEquals(List.of(" spring"), textFragments);
+        StepVerifier.create(adapter.readText(datasetPath, chunk))
+                .expectNext(" spring")
+                .verifyComplete();
     }
 
     @Test
@@ -101,9 +93,9 @@ class FileSystemChunkTextReaderAdapterTest {
 
         FileChunk chunk = new FileChunk(1, 5, 11);
 
-        List<String> textFragments = adapter.readText(datasetPath, chunk);
-
-        assertEquals(List.of("spring"), textFragments);
+        StepVerifier.create(adapter.readText(datasetPath, chunk))
+                .expectNext("spring")
+                .verifyComplete();
     }
 
     @Test
@@ -115,8 +107,8 @@ class FileSystemChunkTextReaderAdapterTest {
 
         FileChunk chunk = new FileChunk(0, 0, 5);
 
-        List<String> textFragments = adapter.readText(datasetPath, chunk);
-
-        assertEquals(List.of("java "), textFragments);
+        StepVerifier.create(adapter.readText(datasetPath, chunk))
+                .expectNext("java ")
+                .verifyComplete();
     }
 }

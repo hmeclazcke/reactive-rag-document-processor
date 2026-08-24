@@ -3,18 +3,19 @@ package com.hmeclazcke.fileprocessor.adapter.out.filesystem;
 import com.hmeclazcke.fileprocessor.application.port.out.ChunkTextReaderPort;
 import com.hmeclazcke.fileprocessor.domain.FileChunk;
 import com.hmeclazcke.fileprocessor.domain.WordCharacterClassifier;
+import com.hmeclazcke.fileprocessor.domain.WordTooLongException;
+import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Path;
-import java.util.List;
 
 public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
 
     private static final String READ_MODE = "r";
     private static final String COULD_NOT_READ_CHUNK_TEXT = "Could not read chunk text";
     private static final int DEFAULT_MAX_WORD_EXTENSION_BYTES = 1024 * 1024;
-    private static final String WORD_EXCEEDS_MAXIMUM_SUPPORTED_LENGTH = "Word exceeds maximum supported length";
     private final int maxWordExtensionBytes;
 
     private final WordCharacterClassifier characterClassifier = new WordCharacterClassifier();
@@ -28,12 +29,17 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
     }
 
     @Override
-    public List<String> readText(Path datasetPath, FileChunk chunk) {
-        try {
-            return List.of(readChunkText(datasetPath, chunk));
-        } catch (IOException exception) {
-            throw new IllegalStateException(COULD_NOT_READ_CHUNK_TEXT, exception);
-        }
+    public Flux<String> readText(Path datasetPath, FileChunk chunk) {
+
+        // Create the file-reading Flux only when someone subscribes to it.
+        return Flux.defer(() -> {
+            try {
+                return Flux.just(readChunkText(datasetPath, chunk));
+            } catch (IOException exception) {
+                return Flux.error(new IllegalStateException(COULD_NOT_READ_CHUNK_TEXT, exception));
+            }
+          // RandomAccessFile is blocking, so run this Flux on Reactor's boundedElastic thread pool.
+        }).subscribeOn(Schedulers.boundedElastic());
     }
 
     // Each word is counted by the chunk where that word starts.
@@ -85,7 +91,7 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
 
             // Protect the processor from malformed text with an extremely long word.
             if (extendedBytes >= maxWordExtensionBytes) {
-                throw new IllegalStateException(WORD_EXCEEDS_MAXIMUM_SUPPORTED_LENGTH);
+                throw new WordTooLongException();
             }
 
             text.append((char) nextByte);
@@ -125,7 +131,7 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
         while (nextByte != -1 && characterClassifier.isWordCharacter((char) nextByte)) {
             // Protect the processor from malformed text with an extremely long word.
             if (skippedBytes >= maxWordExtensionBytes) {
-                throw new IllegalStateException(WORD_EXCEEDS_MAXIMUM_SUPPORTED_LENGTH);
+                throw new WordTooLongException();
             }
 
             skippedBytes++;

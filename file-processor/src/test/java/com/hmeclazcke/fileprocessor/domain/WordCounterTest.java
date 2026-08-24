@@ -1,6 +1,8 @@
 package com.hmeclazcke.fileprocessor.domain;
 
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Flux;
+import reactor.test.StepVerifier;
 
 import java.util.List;
 import java.util.Map;
@@ -40,5 +42,21 @@ class WordCounterTest {
         assertEquals(Map.of(
                 "java", 3L
         ), counts);
+    }
+
+    @Test
+    void countsWordsFromTextFragmentFlux() {
+        Flux<String> textFragments = Flux.just(
+                "hello world",
+                "hello reactor"
+        );
+
+        StepVerifier.create(wordCounter.countReactive(textFragments))
+                .expectNext(Map.of(
+                        "hello", 2L,
+                        "world", 1L,
+                        "reactor", 1L
+                ))
+                .verifyComplete();
     }
 }
