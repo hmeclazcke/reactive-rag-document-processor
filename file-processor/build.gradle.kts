@@ -1,8 +1,12 @@
 plugins {
     java
+    id("org.springframework.boot") version "4.1.0"
+    id("io.spring.dependency-management") version "1.1.7"
 }
 
 dependencies {
-    implementation("io.projectreactor:reactor-core:3.8.0")
-    testImplementation("io.projectreactor:reactor-test:3.8.0")
+    implementation("org.springframework.boot:spring-boot-starter")
+    implementation("io.projectreactor:reactor-core")
+
+    testImplementation("io.projectreactor:reactor-test")
 }
