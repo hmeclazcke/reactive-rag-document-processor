@@ -3,13 +3,16 @@ package com.hmeclazcke.fileprocessor.config;
 import com.hmeclazcke.fileprocessor.adapter.in.cli.ProcessFileChunkRunner;
 import com.hmeclazcke.fileprocessor.adapter.out.filesystem.ChunkTextReaderSettings;
 import com.hmeclazcke.fileprocessor.adapter.out.filesystem.FileSystemChunkTextReaderAdapter;
+import com.hmeclazcke.fileprocessor.adapter.out.mongodb.MongoChunkWordCountRepositoryAdapter;
 import com.hmeclazcke.fileprocessor.application.ProcessFileChunkUseCase;
 import com.hmeclazcke.fileprocessor.application.port.out.ChunkTextReaderPort;
+import com.hmeclazcke.fileprocessor.application.port.out.ChunkWordCountRepositoryPort;
 import com.hmeclazcke.fileprocessor.domain.WordCounter;
 import com.hmeclazcke.fileprocessor.domain.WordTokenizer;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 
 @Configuration
 @EnableConfigurationProperties(FileProcessorProperties.class)
@@ -39,11 +42,17 @@ public class FileProcessorConfiguration {
     }
 
     @Bean
+    public ChunkWordCountRepositoryPort chunkWordCountRepositoryPort(ReactiveMongoTemplate mongoTemplate) {
+        return new MongoChunkWordCountRepositoryAdapter(mongoTemplate);
+    }
+
+    @Bean
     public ProcessFileChunkUseCase processFileChunkUseCase(
             ChunkTextReaderPort textReader,
-            WordCounter wordCounter
+            WordCounter wordCounter,
+            ChunkWordCountRepositoryPort repository
     ) {
-        return new ProcessFileChunkUseCase(textReader, wordCounter);
+        return new ProcessFileChunkUseCase(textReader, wordCounter,repository);
     }
 
     @Bean

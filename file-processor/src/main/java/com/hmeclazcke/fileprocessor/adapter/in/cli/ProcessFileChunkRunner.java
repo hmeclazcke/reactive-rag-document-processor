@@ -2,8 +2,8 @@ package com.hmeclazcke.fileprocessor.adapter.in.cli;
 
 import com.hmeclazcke.fileprocessor.application.ProcessFileChunkUseCase;
 import com.hmeclazcke.fileprocessor.config.FileProcessorProperties;
+import com.hmeclazcke.fileprocessor.domain.ChunkWordCount;
 import com.hmeclazcke.fileprocessor.domain.FileChunk;
-import com.hmeclazcke.fileprocessor.domain.PartialWordCount;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -23,7 +23,7 @@ public class ProcessFileChunkRunner implements CommandLineRunner {
         this.properties = properties;
     }
 
-    private static String formatResult(String datasetPath, FileChunk chunk, PartialWordCount result) {
+    private static String formatResult(String datasetPath, FileChunk chunk, ChunkWordCount result) {
         String lineSeparator = System.lineSeparator();
         StringBuilder builder = new StringBuilder();
 
@@ -58,7 +58,7 @@ public class ProcessFileChunkRunner implements CommandLineRunner {
         );
 
         // .block(): Wait at the command-line entrypoint to turn the Mono into the job's final result.
-        PartialWordCount result = useCase.process(properties.datasetPath(), chunk).block();
+        ChunkWordCount result = useCase.process(properties.datasetPath(), chunk).block();
 
         LOGGER.info("{}", formatResult(properties.datasetPath().toString(), chunk, result));
     }
