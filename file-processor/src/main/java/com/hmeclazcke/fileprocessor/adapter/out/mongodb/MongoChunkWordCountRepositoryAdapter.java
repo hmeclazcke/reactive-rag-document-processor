@@ -22,7 +22,7 @@ public class MongoChunkWordCountRepositoryAdapter implements ChunkWordCountRepos
                 .map(entry -> toDocument(chunkWordCount.chunkIndex(), entry))
                 // Store one Mongo document per word to avoid the 16 MB document size limit.
                 .flatMap(mongoTemplate::save)
-                // We do not need Mongo's saved document here; Mono<Void> only reports save success or failure.
+                // Discard Mongo's saved document and keep only save success or failure.
                 .then();
     }
 
