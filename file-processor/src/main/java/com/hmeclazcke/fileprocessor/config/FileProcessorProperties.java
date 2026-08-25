@@ -10,7 +10,7 @@ public record FileProcessorProperties(
         int chunkIndex,
         long startByteInclusive,
         long endByteExclusive,
-        int maxWordLengthBytes,
+        int maxLineLengthBytes,
         int bufferSizeBytes
 ) {
 }

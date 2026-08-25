@@ -7,12 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class ChunkTextReaderSettingsTest {
 
     @Test
-    void failsWhenMaxWordLengthBytesIsZero() {
+    void failsWhenMaxLineLengthBytesIsZero() {
         assertThrows(IllegalArgumentException.class, () -> new ChunkTextReaderSettings(0, 1024));
     }
 
     @Test
-    void failsWhenMaxWordLengthBytesIsNegative() {
+    void failsWhenMaxLineLengthBytesIsNegative() {
         assertThrows(IllegalArgumentException.class, () -> new ChunkTextReaderSettings(-1, 1024));
     }
 

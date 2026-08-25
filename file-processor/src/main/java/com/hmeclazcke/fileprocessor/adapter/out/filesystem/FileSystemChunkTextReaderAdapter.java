@@ -2,22 +2,39 @@ package com.hmeclazcke.fileprocessor.adapter.out.filesystem;
 
 import com.hmeclazcke.fileprocessor.application.port.out.ChunkTextReaderPort;
 import com.hmeclazcke.fileprocessor.domain.FileChunk;
-import com.hmeclazcke.fileprocessor.domain.WordCharacterClassifier;
-import com.hmeclazcke.fileprocessor.domain.WordTooLongException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.SynchronousSink;
 import reactor.core.scheduler.Schedulers;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
+/**
+ * Reads line-delimited UTF-8 text from an assigned byte range.
+ *
+ * <p>Chunks use [start, end) byte offsets. Lines are the processing records.
+ * This reader returns a line only when the line starts inside the assigned chunk.
+ *
+ * <p>If the chunk starts inside a line, that line is skipped. If a line starts
+ * inside the chunk, the reader may read past endByteExclusive to finish it.
+ *
+ * <p>The reader finds line breaks before decoding, then decodes each complete
+ * line as UTF-8 text.
+ */
 public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
 
     private static final String READ_MODE = "r";
     private static final String COULD_NOT_READ_CHUNK_TEXT = "Could not read chunk text";
+    private static final String COULD_NOT_DECODE_UTF_8_TEXT = "Could not decode UTF-8 text";
+    private static final String LINE_EXCEEDS_MAXIMUM_SUPPORTED_LENGTH =
+            "Line exceeds maximum supported length";
 
-    private final WordCharacterClassifier characterClassifier = new WordCharacterClassifier();
     private final ChunkTextReaderSettings settings;
 
     public FileSystemChunkTextReaderAdapter(ChunkTextReaderSettings settings) {
@@ -31,8 +48,8 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
             try {
                 ChunkTextFileReader reader = new ChunkTextFileReader(datasetPath, chunk);
 
-                // Flux.generate emits one fragment at a time, tied to downstream demand.
-                // The internal buffer size controls each fragment size, so we do not load the whole chunk into memory.
+                // Flux.generate emits one complete line at a time, tied to downstream demand.
+                // Lines are the processing records, so we do not split words or UTF-8 characters manually.
                 return Flux.<String>generate(reader::readNextFragment)
                         // Close the RandomAccessFile when the Flux completes, fails, or gets cancelled.
                         .doFinally(signalType -> reader.close());
@@ -46,11 +63,11 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
     // One instance is created per readText subscription and keeps that read's file position/state.
     private final class ChunkTextFileReader {
 
+        private static final byte LINE_FEED = '\n';
+
         private final RandomAccessFile file;
         private final FileChunk chunk;
 
-        // Keeps the beginning of a word when an internal buffer ends before that word is complete.
-        private String carriedWordFragment = "";
         private boolean initialized;
         private boolean completed;
 
@@ -59,6 +76,8 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
             this.chunk = chunk;
         }
 
+        // Flux.generate calls this method when the next line is requested.
+        // Sending at most one line through SynchronousSink keeps file reading tied to backpressure.
         private void readNextFragment(SynchronousSink<String> sink) {
             try {
                 String fragment = readNextFragment();
@@ -78,43 +97,28 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
 
         private String readNextFragment() throws IOException {
             if (!initialized) {
-                moveToFirstOwnedByte();
+                moveToFirstOwnedLine();
                 initialized = true;
             }
 
-            while (!completed) {
-                String fragment = readNextFragmentCandidate();
-
-                if (!fragment.isEmpty()) {
-                    return fragment;
-                }
+            if (completed || file.getFilePointer() >= chunk.endByteExclusive()) {
+                completed = true;
+                return null;
             }
 
-            return null;
+            byte[] lineBytes = readLineBytes();
+
+            if (lineBytes.length == 0) {
+                completed = true;
+                return null;
+            }
+
+            return decodeUtf8(lineBytes);
         }
 
-        private String readNextFragmentCandidate() throws IOException {
-            if (file.getFilePointer() >= chunk.endByteExclusive()) {
-                completed = true;
-                return carriedWordFragment;
-            }
-
-            StringBuilder candidate = new StringBuilder(carriedWordFragment);
-            carriedWordFragment = "";
-
-            readUpToBufferOrChunkEnd(candidate);
-
-            if (file.getFilePointer() >= chunk.endByteExclusive()) {
-                completeLastWord(candidate);
-                completed = true;
-                return candidate.toString();
-            }
-
-            return splitCandidateWithoutCuttingWord(candidate);
-        }
-
-        // Each word is counted by the chunk where that word starts.
-        private void moveToFirstOwnedByte() throws IOException {
+        // Each line is owned by the chunk where that line starts.
+        // If this chunk starts in the middle of a line, skip that partial line.
+        private void moveToFirstOwnedLine() throws IOException {
             if (chunk.startByteInclusive() == 0) {
                 file.seek(chunk.startByteInclusive());
                 return;
@@ -122,73 +126,79 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
 
             file.seek(chunk.startByteInclusive() - 1);
             int previousByte = file.read();
-            int currentByte = file.read();
 
-            if (!isMiddleOfWord(previousByte, currentByte)) {
+            if (previousByte == LINE_FEED) {
                 file.seek(chunk.startByteInclusive());
                 return;
             }
 
             file.seek(chunk.startByteInclusive());
-            skipUntilSeparator();
+            skipUntilNextLineStart();
         }
 
-        private boolean isMiddleOfWord(int previousByte, int currentByte) {
-            return previousByte != -1
-                    && currentByte != -1
-                    && characterClassifier.isWordCharacter((char) previousByte)
-                    && characterClassifier.isWordCharacter((char) currentByte);
-        }
-
-        private void skipUntilSeparator() throws IOException {
+        private void skipUntilNextLineStart() throws IOException {
+            byte[] buffer = new byte[settings.bufferSizeBytes()];
             int skippedBytes = 0;
-            int nextByte = file.read();
 
-            while (nextByte != -1 && characterClassifier.isWordCharacter((char) nextByte)) {
-                // Protect the processor from malformed text with an extremely long word.
-                if (skippedBytes >= settings.maxWordLengthBytes()) {
-                    throw new WordTooLongException();
-                }
+            while (true) {
+                int bytesRead = file.read(buffer);
 
-                skippedBytes++;
-                nextByte = file.read();
-            }
-        }
-
-        private void readUpToBufferOrChunkEnd(StringBuilder text) throws IOException {
-            long remainingChunkBytes = chunk.endByteExclusive() - file.getFilePointer();
-            long bytesToRead = Math.min(settings.bufferSizeBytes(), remainingChunkBytes);
-
-            for (long i = 0; i < bytesToRead; i++) {
-                int nextByte = file.read();
-
-                if (nextByte == -1) {
+                if (bytesRead == -1) {
                     completed = true;
                     return;
                 }
 
-                text.append((char) nextByte);
+                int lineFeedIndex = lineFeedIndex(buffer, bytesRead);
+                int bytesToSkip = lineFeedIndex == -1 ? bytesRead : lineFeedIndex + 1;
+
+                skippedBytes += bytesToSkip;
+                failIfLineIsTooLong(skippedBytes);
+
+                if (lineFeedIndex != -1) {
+                    seekBackUnreadBytes(bytesRead - bytesToSkip);
+                    return;
+                }
             }
         }
 
-        private String splitCandidateWithoutCuttingWord(StringBuilder candidate) {
-            int lastSeparatorIndex = lastSeparatorIndex(candidate);
+        // Reads one complete line, extending past the chunk end if needed.
+        // This matches the contract that a line belongs to the chunk where it starts.
+        private byte[] readLineBytes() throws IOException {
+            ByteArrayOutputStream lineBytes = new ByteArrayOutputStream();
+            byte[] buffer = new byte[settings.bufferSizeBytes()];
 
-            if (lastSeparatorIndex == -1) {
-                carriedWordFragment = candidate.toString();
-                failIfWordIsTooLong(carriedWordFragment.length());
-                return "";
+            while (true) {
+                int bytesRead = file.read(buffer);
+
+                if (bytesRead == -1) {
+                    return lineBytes.toByteArray();
+                }
+
+                int lineFeedIndex = lineFeedIndex(buffer, bytesRead);
+                int bytesToKeep = lineFeedIndex == -1 ? bytesRead : lineFeedIndex + 1;
+
+                appendLineBytes(lineBytes, buffer, bytesToKeep);
+
+                if (lineFeedIndex != -1) {
+                    seekBackUnreadBytes(bytesRead - bytesToKeep);
+                    return lineBytes.toByteArray();
+                }
             }
-
-            carriedWordFragment = candidate.substring(lastSeparatorIndex + 1);
-            failIfWordIsTooLong(carriedWordFragment.length());
-
-            return candidate.substring(0, lastSeparatorIndex + 1);
         }
 
-        private int lastSeparatorIndex(StringBuilder text) {
-            for (int index = text.length() - 1; index >= 0; index--) {
-                if (!characterClassifier.isWordCharacter(text.charAt(index))) {
+        // Check the limit before storing more bytes so one huge line cannot grow memory without bounds.
+        private void appendLineBytes(ByteArrayOutputStream lineBytes, byte[] buffer, int length) {
+            if (lineBytes.size() + length > settings.maxLineLengthBytes()) {
+                throw new IllegalStateException(LINE_EXCEEDS_MAXIMUM_SUPPORTED_LENGTH);
+            }
+
+            lineBytes.write(buffer, 0, length);
+        }
+
+        // Line breaks are detected at byte level because '\n' is the same single byte in UTF-8 and ASCII.
+        private int lineFeedIndex(byte[] buffer, int bytesRead) {
+            for (int index = 0; index < bytesRead; index++) {
+                if (buffer[index] == LINE_FEED) {
                     return index;
                 }
             }
@@ -196,44 +206,30 @@ public class FileSystemChunkTextReaderAdapter implements ChunkTextReaderPort {
             return -1;
         }
 
-        private void completeLastWord(StringBuilder text) throws IOException {
-            int currentWordLength = trailingWordLength(text);
-
-            if (currentWordLength == 0) {
-                return;
-            }
-
-            failIfWordIsTooLong(currentWordLength);
-
-            int nextByte = file.read();
-
-            while (nextByte != -1 && characterClassifier.isWordCharacter((char) nextByte)) {
-                // Read past the configured end only to finish the current word.
-                currentWordLength++;
-                failIfWordIsTooLong(currentWordLength);
-
-                text.append((char) nextByte);
-                nextByte = file.read();
+        // RandomAccessFile may read past the line break into the next line.
+        // Move the pointer back so the next Flux request starts at the correct line.
+        private void seekBackUnreadBytes(int unreadBytes) throws IOException {
+            if (unreadBytes > 0) {
+                file.seek(file.getFilePointer() - unreadBytes);
             }
         }
 
-        private int trailingWordLength(StringBuilder text) {
-            int wordLength = 0;
-
-            for (int index = text.length() - 1; index >= 0; index--) {
-                if (!characterClassifier.isWordCharacter(text.charAt(index))) {
-                    return wordLength;
-                }
-
-                wordLength++;
+        // Decode only after a full line is collected, so Java never receives a cut UTF-8 character.
+        private String decodeUtf8(byte[] bytes) {
+            try {
+                return StandardCharsets.UTF_8.newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT)
+                        .decode(ByteBuffer.wrap(bytes))
+                        .toString();
+            } catch (CharacterCodingException exception) {
+                throw new IllegalStateException(COULD_NOT_DECODE_UTF_8_TEXT, exception);
             }
-
-            return wordLength;
         }
 
-        private void failIfWordIsTooLong(int wordLength) {
-            if (wordLength > settings.maxWordLengthBytes()) {
-                throw new WordTooLongException();
+        private void failIfLineIsTooLong(int lineLengthBytes) {
+            if (lineLengthBytes > settings.maxLineLengthBytes()) {
+                throw new IllegalStateException(LINE_EXCEEDS_MAXIMUM_SUPPORTED_LENGTH);
             }
         }
 

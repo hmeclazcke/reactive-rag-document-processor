@@ -21,7 +21,7 @@ public class FileProcessorConfiguration {
     @Bean
     public ChunkTextReaderSettings chunkTextReaderSettings(FileProcessorProperties properties) {
         return new ChunkTextReaderSettings(
-                properties.maxWordLengthBytes(),
+                properties.maxLineLengthBytes(),
                 properties.bufferSizeBytes()
         );
     }
