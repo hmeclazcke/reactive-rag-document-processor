@@ -1,0 +1,3 @@
+spring:
+  mongodb:
+    uri: ${MONGODB_URI:mongodb://root:root@localhost:27017/reactive_rag?authSource=admin}

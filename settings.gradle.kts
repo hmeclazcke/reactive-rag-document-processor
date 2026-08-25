@@ -18,3 +18,4 @@ rootProject.name = "reactive-rag-document-processor"
 include("file-generator")
 include("file-coordinator")
 include("file-processor")
+include("file-query-api")
