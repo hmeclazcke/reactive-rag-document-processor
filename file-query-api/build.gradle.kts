@@ -7,7 +7,10 @@ plugins {
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-data-mongodb-reactive")
+    implementation("org.springframework.boot:spring-boot-starter-graphql")
+    implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("io.projectreactor:reactor-core")
 
+    testImplementation("org.springframework.boot:spring-boot-starter-graphql-test")
     testImplementation("io.projectreactor:reactor-test")
 }
