@@ -2,3 +2,14 @@ file-generator:
   dataset-path: ${DATASET_PATH:./data/dataset.txt}
   minimum-size-bytes: ${DATASET_MINIMUM_SIZE_BYTES:1048576}
   seed-resource-path: ${SEED_RESOURCE_PATH:/dataset-seeds/local-seeds.txt}
+  seed-provider: ${SEED_PROVIDER:local}
+
+spring:
+  ai:
+    model:
+      chat: ${SPRING_AI_MODEL_CHAT:none}
+    google:
+      genai:
+        api-key: ${GOOGLE_API_KEY:}
+        chat:
+          model: ${GEMINI_MODEL:gemini-3.6-flash}

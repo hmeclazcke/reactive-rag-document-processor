@@ -8,6 +8,11 @@ import java.nio.file.Path;
 public record FileGeneratorProperties(
         Path datasetPath,
         long minimumSizeBytes,
-        String seedResourcePath
+        String seedResourcePath,
+        SeedProvider seedProvider
 ) {
+    public enum SeedProvider {
+        LOCAL,
+        LLM
+    }
 }
