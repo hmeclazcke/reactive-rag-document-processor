@@ -1,3 +1,7 @@
+file-query-api:
+  top-words:
+    max-limit: ${TOP_WORDS_MAX_LIMIT:100}
+
 spring:
   mongodb:
     uri: ${MONGODB_URI:mongodb://root:root@localhost:27017/reactive_rag?authSource=admin}

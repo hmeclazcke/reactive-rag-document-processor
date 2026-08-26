@@ -52,7 +52,7 @@ public class FileProcessorConfiguration {
             WordCounter wordCounter,
             ChunkWordCountRepositoryPort repository
     ) {
-        return new ProcessFileChunkUseCase(textReader, wordCounter,repository);
+        return new ProcessFileChunkUseCase(textReader, wordCounter, repository);
     }
 
     @Bean
