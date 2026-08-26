@@ -5,12 +5,10 @@ import com.hmeclazcke.filequeryapi.domain.WordCount;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.query.Criteria;
 import reactor.core.publisher.Flux;
 
-import static org.springframework.data.mongodb.core.aggregation.Aggregation.group;
-import static org.springframework.data.mongodb.core.aggregation.Aggregation.limit;
-import static org.springframework.data.mongodb.core.aggregation.Aggregation.newAggregation;
-import static org.springframework.data.mongodb.core.aggregation.Aggregation.sort;
+import static org.springframework.data.mongodb.core.aggregation.Aggregation.*;
 
 public class MongoWordCountQueryAdapter implements WordCountQueryPort {
 
@@ -21,8 +19,9 @@ public class MongoWordCountQueryAdapter implements WordCountQueryPort {
     }
 
     @Override
-    public Flux<WordCount> findTopWords(int limit) {
+    public Flux<WordCount> findTopWords(String datasetId, int limit) {
         Aggregation aggregation = newAggregation(
+                match(Criteria.where("datasetId").is(datasetId)),
                 group("word")
                         .first("word").as("word")
                         .sum("count").as("count"),

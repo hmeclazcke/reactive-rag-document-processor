@@ -8,6 +8,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-data-mongodb-reactive")
     implementation("org.springframework.boot:spring-boot-starter-graphql")
+    implementation("com.graphql-java:graphql-java-extended-scalars:24.0")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
     implementation("io.projectreactor:reactor-core")
 

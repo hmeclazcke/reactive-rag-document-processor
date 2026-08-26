@@ -5,5 +5,5 @@ import reactor.core.publisher.Flux;
 
 public interface WordCountQueryPort {
 
-    Flux<WordCount> findTopWords(int limit);
+    Flux<WordCount> findTopWords(String datasetId, int limit);
 }

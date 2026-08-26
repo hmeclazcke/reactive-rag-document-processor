@@ -1,8 +1,19 @@
+scalar Long
+
 type Query {
-    topWords(limit: Int!): [WordCount!]!
+    topWords(datasetId: String!, limit: Int!): [WordCount!]!
+    datasets: [Dataset!]!
 }
 
 type WordCount {
     word: String!
-    count: Int!
+    count: Long!
+}
+
+type Dataset {
+    datasetId: String!
+    path: String!
+    fileSizeBytes: Long!
+    chunkSizeBytes: Long!
+    chunkCount: Int!
 }

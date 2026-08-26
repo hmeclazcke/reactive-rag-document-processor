@@ -24,10 +24,10 @@ public class WordCountGraphQlController {
     }
 
     @QueryMapping
-    public Mono<List<WordCount>> topWords(@Argument int limit) {
+    public Mono<List<WordCount>> topWords(@Argument String datasetId, @Argument int limit) {
         // GraphQL query responses are returned as one JSON document.
         // collectList keeps the pipeline reactive while adapting Flux<WordCount> to Mono<List<WordCount>>.
-        return useCase.getTopWords(limit).collectList();
+        return useCase.getTopWords(datasetId, limit).collectList();
     }
 
     @GraphQlExceptionHandler

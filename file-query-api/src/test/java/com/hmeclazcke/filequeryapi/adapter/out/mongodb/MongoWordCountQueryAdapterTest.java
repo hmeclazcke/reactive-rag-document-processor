@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 class MongoWordCountQueryAdapterTest {
 
+    private static final String DATASET_ID = "dataset-test";
     private final ReactiveMongoTemplate mongoTemplate = mock(ReactiveMongoTemplate.class);
     private final MongoWordCountQueryAdapter adapter = new MongoWordCountQueryAdapter(mongoTemplate);
 
@@ -29,7 +30,7 @@ class MongoWordCountQueryAdapterTest {
                 new WordCountAggregationResult("reactor", 3)
         ));
 
-        StepVerifier.create(adapter.findTopWords(2))
+        StepVerifier.create(adapter.findTopWords(DATASET_ID, 2))
                 .expectNext(
                         new WordCount("java", 5),
                         new WordCount("reactor", 3)

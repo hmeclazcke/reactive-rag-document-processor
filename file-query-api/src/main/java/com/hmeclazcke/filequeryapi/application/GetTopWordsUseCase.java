@@ -20,7 +20,7 @@ public class GetTopWordsUseCase {
         this.maxLimit = maxLimit;
     }
 
-    public Flux<WordCount> getTopWords(int limit) {
+    public Flux<WordCount> getTopWords(String datasetId, int limit) {
         if (limit <= 0) {
             return Flux.error(new IllegalArgumentException(LIMIT_VALIDATION_MESSAGE));
         }
@@ -31,6 +31,6 @@ public class GetTopWordsUseCase {
             );
         }
 
-        return wordCountQuery.findTopWords(limit);
+        return wordCountQuery.findTopWords(datasetId, limit);
     }
 }
