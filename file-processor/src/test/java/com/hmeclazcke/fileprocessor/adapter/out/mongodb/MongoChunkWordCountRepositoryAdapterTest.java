@@ -16,10 +16,12 @@ class MongoChunkWordCountRepositoryAdapterTest {
 
     private final ReactiveMongoTemplate mongoTemplate = mock(ReactiveMongoTemplate.class);
     private final MongoChunkWordCountRepositoryAdapter adapter = new MongoChunkWordCountRepositoryAdapter(mongoTemplate);
+    private static final String DATASET_ID = "dataset-6g";
 
     @Test
     void savesOneDocumentPerWordCount() {
         ChunkWordCount chunkWordCount = new ChunkWordCount(
+                DATASET_ID,
                 2,
                 Map.of(
                         "java", 3L,
@@ -27,13 +29,15 @@ class MongoChunkWordCountRepositoryAdapterTest {
                 )
         );
         ChunkWordCountDocument javaDocument = new ChunkWordCountDocument(
-                "2:java",
+                "dataset-6g:2:java",
+                DATASET_ID,
                 2,
                 "java",
                 3L
         );
         ChunkWordCountDocument reactorDocument = new ChunkWordCountDocument(
-                "2:reactor",
+                "dataset-6g:2:reactor",
+                DATASET_ID,
                 2,
                 "reactor",
                 1L

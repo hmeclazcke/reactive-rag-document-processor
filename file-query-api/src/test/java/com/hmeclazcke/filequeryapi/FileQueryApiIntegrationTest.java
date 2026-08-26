@@ -30,8 +30,8 @@ class FileQueryApiIntegrationTest {
     ).withReplicaSet();
 
     private final ReactiveMongoTemplate mongoTemplate;
-
     private final HttpGraphQlTester graphQlTester;
+    private static final String DATASET_ID = "dataset-test";
 
     @Autowired
     FileQueryApiIntegrationTest(ReactiveMongoTemplate mongoTemplate, HttpGraphQlTester graphQlTester) {
@@ -50,10 +50,10 @@ class FileQueryApiIntegrationTest {
     @BeforeEach
     void setUp() {
         List<ChunkWordCountDocument> documents = List.of(
-                new ChunkWordCountDocument("0:java", 0, "java", 3),
-                new ChunkWordCountDocument("1:java", 1, "java", 2),
-                new ChunkWordCountDocument("0:spring", 0, "spring", 4),
-                new ChunkWordCountDocument("0:reactor", 0, "reactor", 1)
+                new ChunkWordCountDocument("dataset-test:0:java", DATASET_ID, 0, "java", 3),
+                new ChunkWordCountDocument("dataset-test:1:java", DATASET_ID, 1, "java", 2),
+                new ChunkWordCountDocument("dataset-test:0:spring", DATASET_ID, 0, "spring", 4),
+                new ChunkWordCountDocument("dataset-test:0:reactor", DATASET_ID, 0, "reactor", 1)
         );
 
         StepVerifier.create(

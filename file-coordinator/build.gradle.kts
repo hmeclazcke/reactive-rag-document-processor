@@ -6,4 +6,7 @@ plugins {
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
+    implementation("org.springframework.boot:spring-boot-starter-data-mongodb-reactive")
+
+    testImplementation("io.projectreactor:reactor-test")
 }

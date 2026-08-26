@@ -19,23 +19,24 @@ public class MongoChunkWordCountRepositoryAdapter implements ChunkWordCountRepos
     @Override
     public Mono<Void> save(ChunkWordCount chunkWordCount) {
         return Flux.fromIterable(chunkWordCount.wordCounts().entrySet())
-                .map(entry -> toDocument(chunkWordCount.chunkIndex(), entry))
+                .map(entry -> toDocument(chunkWordCount.datasetId(), chunkWordCount.chunkIndex(), entry))
                 // Store one Mongo document per word to avoid the 16 MB document size limit.
                 .flatMap(mongoTemplate::save)
                 // Discard Mongo's saved document and keep only save success or failure.
                 .then();
     }
 
-    private ChunkWordCountDocument toDocument(int chunkIndex, Map.Entry<String, Long> wordCount) {
+    private ChunkWordCountDocument toDocument(String datasetId, int chunkIndex, Map.Entry<String, Long> wordCount) {
         return new ChunkWordCountDocument(
-                documentId(chunkIndex, wordCount.getKey()),
+                documentId(datasetId, chunkIndex, wordCount.getKey()),
+                datasetId,
                 chunkIndex,
                 wordCount.getKey(),
                 wordCount.getValue()
         );
     }
 
-    private String documentId(int chunkIndex, String word) {
-        return chunkIndex + ":" + word;
+    private String documentId(String datasetId, int chunkIndex, String word) {
+        return datasetId + ":" + chunkIndex + ":" + word;
     }
 }

@@ -21,10 +21,10 @@ public class ProcessFileChunkUseCase {
         this.repository = repository;
     }
 
-    public Mono<ChunkWordCount> process(Path datasetPath, FileChunk chunk) {
+    public Mono<ChunkWordCount> process(String datasetId, Path datasetPath, FileChunk chunk) {
         // Count the assigned chunk completely, then save that chunk result.
         return wordCounter.countReactive(textReader.readText(datasetPath, chunk))
-                .map(wordCounts -> new ChunkWordCount(chunk.index(), wordCounts))
+                .map(wordCounts -> new ChunkWordCount(datasetId, chunk.index(), wordCounts))
                 .flatMap(chunkWordCount -> repository.save(chunkWordCount)
                         .thenReturn(chunkWordCount));
     }

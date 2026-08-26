@@ -1,5 +1,9 @@
-file-coordinator:
-  dataset-path: ${DATASET_PATH:./data/dataset.txt}
+spring:
+  mongodb:
+    uri: ${MONGODB_URI:mongodb://root:root@localhost:27017/reactive_rag?authSource=admin}
 
+file-coordinator:
+  dataset-id: ${DATASET_ID:local-dataset}
+  dataset-path: ${DATASET_PATH:./data/dataset.txt}
   # 5 MB default chunk size for local testing.
   chunk-size-bytes: ${CHUNK_SIZE_BYTES:5242880}

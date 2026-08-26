@@ -22,16 +22,19 @@ public class PlanFileProcessingRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        ProcessingPlan plan = useCase.plan(properties.datasetPath(), properties.chunkSizeBytes());
+        // .block(): Wait at the command-line entrypoint to persist the plan before printing it.
+        ProcessingPlan plan = useCase.plan(properties.datasetId(), properties.datasetPath(), properties.chunkSizeBytes()).block();
 
         LOGGER.info("""
         
         Processing plan
+          datasetId: {}
           datasetPath: {}
           fileSizeBytes: {}
           chunkSizeBytes: {}
           workers: {}
         """,
+                plan.datasetId(),
                 plan.datasetPath(),
                 plan.fileSizeBytes(),
                 plan.chunkSizeBytes(),

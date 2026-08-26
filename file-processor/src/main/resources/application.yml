@@ -4,6 +4,7 @@ spring:
 
 file-processor:
   dataset-path: ${DATASET_PATH:./data/dataset.txt}
+  dataset-id: ${DATASET_ID:local-dataset}
   chunk-index: ${CHUNK_INDEX:0}
   start-byte-inclusive: ${START_BYTE_INCLUSIVE:0}
   end-byte-exclusive: ${END_BYTE_EXCLUSIVE:1048576}

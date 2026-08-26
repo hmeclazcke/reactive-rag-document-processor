@@ -23,12 +23,13 @@ public class ProcessFileChunkRunner implements CommandLineRunner {
         this.properties = properties;
     }
 
-    private static String formatResult(String datasetPath, FileChunk chunk, ChunkWordCount result) {
+    private static String formatResult(String datasetId, String datasetPath, FileChunk chunk, ChunkWordCount result) {
         String lineSeparator = System.lineSeparator();
         StringBuilder builder = new StringBuilder();
 
         builder.append(lineSeparator)
                 .append("Chunk processed").append(lineSeparator)
+                .append("  datasetId: ").append(datasetId).append(lineSeparator)
                 .append("  datasetPath: ").append(datasetPath).append(lineSeparator)
                 .append("  chunkIndex: ").append(chunk.index()).append(lineSeparator)
                 .append("  startByteInclusive: ").append(chunk.startByteInclusive()).append(lineSeparator)
@@ -58,8 +59,8 @@ public class ProcessFileChunkRunner implements CommandLineRunner {
         );
 
         // .block(): Wait at the command-line entrypoint to turn the Mono into the job's final result.
-        ChunkWordCount result = useCase.process(properties.datasetPath(), chunk).block();
+        ChunkWordCount result = useCase.process(properties.datasetId(), properties.datasetPath(), chunk).block();
 
-        LOGGER.info("{}", formatResult(properties.datasetPath().toString(), chunk, result));
+        LOGGER.info("{}", formatResult(properties.datasetId(), properties.datasetPath().toString(), chunk, result));
     }
 }

@@ -7,6 +7,7 @@ import java.nio.file.Path;
 @ConfigurationProperties(prefix = "file-processor")
 public record FileProcessorProperties(
         Path datasetPath,
+        String datasetId,
         int chunkIndex,
         long startByteInclusive,
         long endByteExclusive,

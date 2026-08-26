@@ -6,6 +6,7 @@ import java.nio.file.Path;
 
 @ConfigurationProperties(prefix = "file-coordinator")
 public record FileCoordinatorProperties(
+        String datasetId,
         Path datasetPath,
         long chunkSizeBytes
 ) {

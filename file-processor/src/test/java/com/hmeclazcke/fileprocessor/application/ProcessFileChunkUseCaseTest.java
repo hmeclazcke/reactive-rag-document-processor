@@ -18,6 +18,7 @@ import static org.mockito.Mockito.*;
 
 class ProcessFileChunkUseCaseTest {
 
+    private static final String DATASET_ID = "dataset-6g";
     private final ChunkTextReaderPort textReader = mock(ChunkTextReaderPort.class);
     private final ChunkWordCountRepositoryPort repository = mock(ChunkWordCountRepositoryPort.class);
     private final WordTokenizer tokenizer = new WordTokenizer();
@@ -29,6 +30,7 @@ class ProcessFileChunkUseCaseTest {
         Path datasetPath = Path.of("dataset.txt");
         FileChunk chunk = new FileChunk(2, 100, 200);
         ChunkWordCount expectedResult = new ChunkWordCount(
+                DATASET_ID,
                 chunk.index(),
                 Map.of(
                         "java", 2L,
@@ -43,7 +45,7 @@ class ProcessFileChunkUseCaseTest {
         ));
         when(repository.save(expectedResult)).thenReturn(Mono.empty());
 
-        StepVerifier.create(useCase.process(datasetPath, chunk))
+        StepVerifier.create(useCase.process(DATASET_ID, datasetPath, chunk))
                 .expectNext(expectedResult)
                 .verifyComplete();
 
