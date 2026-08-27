@@ -14,7 +14,7 @@ public class SpringAiGeminiGeneratedSeedTextAdapter implements GeneratedSeedText
             - Do not use numbering.
             - Do not use markdown.
             - Do not include explanations.
-            - Use terms related to Java, Spring, Reactor, MongoDB, GraphQL, distributed processing, files, chunks, embeddings, and RAG.
+            - Use terms related to Java, Spring, Reactor, MongoDB, GraphQL, distributed processing, files, chunks, embeddings, RAG and sourdough recipes.
             - Generate 100 lines.
             """;
 

@@ -17,9 +17,9 @@ class WordCharacterClassifierTest {
         assertTrue(classifier.isWordCharacter('9'));
         assertTrue(classifier.isWordCharacter('A'));
         assertTrue(classifier.isWordCharacter('Z'));
-        assertTrue(classifier.isWordCharacter('á'));
-        assertTrue(classifier.isWordCharacter('ñ'));
-        assertTrue(classifier.isWordCharacter('İ'));
+        assertTrue(classifier.isWordCharacter('\u00e1'));
+        assertTrue(classifier.isWordCharacter('\u00f1'));
+        assertTrue(classifier.isWordCodePoint('\u00c1'));
     }
 
     @Test

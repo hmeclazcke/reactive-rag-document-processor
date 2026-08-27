@@ -9,4 +9,4 @@ file-processor:
   start-byte-inclusive: ${START_BYTE_INCLUSIVE:0}
   end-byte-exclusive: ${END_BYTE_EXCLUSIVE:1048576}
   max-line-length-bytes: ${MAX_LINE_LENGTH_BYTES:1048576}
-  buffer-size-bytes: ${BUFFER_SIZE_BYTES:65536}
+  buffer-size-bytes: ${BUFFER_SIZE_BYTES:4194304}

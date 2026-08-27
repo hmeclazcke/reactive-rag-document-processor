@@ -1,6 +1,6 @@
 package com.hmeclazcke.fileprocessor.adapter.out.filesystem;
 
-public record ChunkTextReaderSettings(
+public record ChunkWordCounterSettings(
         int maxLineLengthBytes,
         int bufferSizeBytes
 ) {
@@ -11,7 +11,7 @@ public record ChunkTextReaderSettings(
     private static final String BUFFER_SIZE_BYTES_VALIDATION_MESSAGE =
             "bufferSizeBytes must be greater than zero";
 
-    public ChunkTextReaderSettings {
+    public ChunkWordCounterSettings {
         if (maxLineLengthBytes <= 0) {
             throw new IllegalArgumentException(MAX_LINE_LENGTH_BYTES_VALIDATION_MESSAGE);
         }
