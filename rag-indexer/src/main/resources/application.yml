@@ -1,0 +1,7 @@
+spring:
+  mongodb:
+    uri: ${MONGODB_URI:mongodb://root:root@localhost:27017/reactive_rag?authSource=admin}
+
+rag-indexer:
+  dataset-id: ${DATASET_ID:local-dataset}
+  batch-size: ${RAG_INDEXER_BATCH_SIZE:100}

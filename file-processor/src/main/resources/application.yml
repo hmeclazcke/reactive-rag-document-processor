@@ -10,5 +10,5 @@ file-processor:
   end-byte-exclusive: ${END_BYTE_EXCLUSIVE:1048576}
   max-line-length-bytes: ${MAX_LINE_LENGTH_BYTES:1048576}
   buffer-size-bytes: ${BUFFER_SIZE_BYTES:4194304}
-  rag-chunk-max-text-length-characters: ${RAG_CHUNK_MAX_TEXT_LENGTH_CHARACTERS:2000}
-  rag-chunk-batch-size: ${RAG_CHUNK_BATCH_SIZE:100}
+  rag-chunk-max-text-length-characters: ${RAG_CHUNK_MAX_TEXT_LENGTH_CHARACTERS:8000}
+  rag-chunk-batch-size: ${RAG_CHUNK_BATCH_SIZE:1000}
