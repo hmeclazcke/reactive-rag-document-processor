@@ -4,6 +4,7 @@ import com.hmeclazcke.fileprocessor.application.ProcessFileChunkUseCase;
 import com.hmeclazcke.fileprocessor.config.FileProcessorProperties;
 import com.hmeclazcke.fileprocessor.domain.ChunkWordCount;
 import com.hmeclazcke.fileprocessor.domain.FileChunk;
+import com.hmeclazcke.fileprocessor.domain.ProcessedFileChunk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -23,9 +24,10 @@ public class ProcessFileChunkRunner implements CommandLineRunner {
         this.properties = properties;
     }
 
-    private static String formatResult(String datasetId, String datasetPath, FileChunk chunk, ChunkWordCount result) {
+    private static String formatResult(String datasetId, String datasetPath, FileChunk chunk, ProcessedFileChunk result) {
         String lineSeparator = System.lineSeparator();
         StringBuilder builder = new StringBuilder();
+        ChunkWordCount chunkWordCount = result.chunkWordCount();
 
         builder.append(lineSeparator)
                 .append("Chunk processed").append(lineSeparator)
@@ -34,11 +36,12 @@ public class ProcessFileChunkRunner implements CommandLineRunner {
                 .append("  chunkIndex: ").append(chunk.index()).append(lineSeparator)
                 .append("  startByteInclusive: ").append(chunk.startByteInclusive()).append(lineSeparator)
                 .append("  endByteExclusive: ").append(chunk.endByteExclusive()).append(lineSeparator)
-                .append("  uniqueWords: ").append(result.wordCounts().size()).append(lineSeparator)
+                .append("  uniqueWords: ").append(chunkWordCount.wordCounts().size()).append(lineSeparator)
+                .append("  ragChunks: ").append(result.ragChunkCount()).append(lineSeparator)
                 .append(lineSeparator)
                 .append("Top ").append(TOP_WORDS_TO_LOG).append(" words").append(lineSeparator);
 
-        result.wordCounts().entrySet().stream()
+        chunkWordCount.wordCounts().entrySet().stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder()))
                 .limit(TOP_WORDS_TO_LOG)
                 .forEach(entry -> builder.append("  ")
@@ -59,7 +62,7 @@ public class ProcessFileChunkRunner implements CommandLineRunner {
         );
 
         // .block(): Wait at the command-line entrypoint to turn the Mono into the job's final result.
-        ChunkWordCount result = useCase.process(properties.datasetId(), properties.datasetPath(), chunk).block();
+        ProcessedFileChunk result = useCase.process(properties.datasetId(), properties.datasetPath(), chunk).block();
 
         LOGGER.info("{}", formatResult(properties.datasetId(), properties.datasetPath().toString(), chunk, result));
     }

@@ -12,6 +12,8 @@ public record FileProcessorProperties(
         long startByteInclusive,
         long endByteExclusive,
         int maxLineLengthBytes,
-        int bufferSizeBytes
+        int bufferSizeBytes,
+        int ragChunkMaxTextLengthCharacters,
+        int ragChunkBatchSize
 ) {
 }

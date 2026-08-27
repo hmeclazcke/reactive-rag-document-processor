@@ -1,12 +1,14 @@
 package com.hmeclazcke.fileprocessor.config;
 
 import com.hmeclazcke.fileprocessor.adapter.in.cli.ProcessFileChunkRunner;
-import com.hmeclazcke.fileprocessor.adapter.out.filesystem.ChunkWordCounterSettings;
-import com.hmeclazcke.fileprocessor.adapter.out.filesystem.FileSystemChunkWordCounterAdapter;
+import com.hmeclazcke.fileprocessor.adapter.out.filesystem.FileChunkProcessorSettings;
+import com.hmeclazcke.fileprocessor.adapter.out.filesystem.FileSystemChunkProcessorAdapter;
 import com.hmeclazcke.fileprocessor.adapter.out.mongodb.MongoChunkWordCountRepositoryAdapter;
+import com.hmeclazcke.fileprocessor.adapter.out.mongodb.MongoRagChunkRepositoryAdapter;
 import com.hmeclazcke.fileprocessor.application.ProcessFileChunkUseCase;
-import com.hmeclazcke.fileprocessor.application.port.out.ChunkWordCounterPort;
 import com.hmeclazcke.fileprocessor.application.port.out.ChunkWordCountRepositoryPort;
+import com.hmeclazcke.fileprocessor.application.port.out.FileChunkProcessorPort;
+import com.hmeclazcke.fileprocessor.application.port.out.RagChunkRepositoryPort;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,16 +19,18 @@ import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 public class FileProcessorConfiguration {
 
     @Bean
-    public ChunkWordCounterSettings chunkWordCounterSettings(FileProcessorProperties properties) {
-        return new ChunkWordCounterSettings(
+    public FileChunkProcessorSettings fileChunkProcessorSettings(FileProcessorProperties properties) {
+        return new FileChunkProcessorSettings(
                 properties.maxLineLengthBytes(),
-                properties.bufferSizeBytes()
+                properties.bufferSizeBytes(),
+                properties.ragChunkMaxTextLengthCharacters(),
+                properties.ragChunkBatchSize()
         );
     }
 
     @Bean
-    public ChunkWordCounterPort chunkWordCounterPort(ChunkWordCounterSettings settings) {
-        return new FileSystemChunkWordCounterAdapter(settings);
+    public FileChunkProcessorPort fileChunkProcessorPort(FileChunkProcessorSettings settings) {
+        return new FileSystemChunkProcessorAdapter(settings);
     }
 
     @Bean
@@ -35,11 +39,17 @@ public class FileProcessorConfiguration {
     }
 
     @Bean
+    public RagChunkRepositoryPort ragChunkRepositoryPort(ReactiveMongoTemplate mongoTemplate) {
+        return new MongoRagChunkRepositoryAdapter(mongoTemplate);
+    }
+
+    @Bean
     public ProcessFileChunkUseCase processFileChunkUseCase(
-            ChunkWordCounterPort wordCounter,
-            ChunkWordCountRepositoryPort repository
+            FileChunkProcessorPort chunkProcessor,
+            ChunkWordCountRepositoryPort wordCountRepository,
+            RagChunkRepositoryPort ragChunkRepository
     ) {
-        return new ProcessFileChunkUseCase(wordCounter, repository);
+        return new ProcessFileChunkUseCase(chunkProcessor, wordCountRepository, ragChunkRepository);
     }
 
     @Bean

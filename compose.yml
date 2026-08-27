@@ -9,7 +9,9 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: root
       MONGO_INITDB_DATABASE: reactive_rag
     volumes:
-      - mongo-data:/data/db
+      - type: bind
+        source: ${MONGO_DATA_PATH:-./.docker/mongo-data}
+        target: /data/db
 
   mongo-express:
     image: mongo-express:1.0.2-20-alpine3.19
@@ -21,6 +23,3 @@ services:
     environment:
       ME_CONFIG_MONGODB_URL: mongodb://root:root@mongo:27017/?authSource=admin
       ME_CONFIG_BASICAUTH: "false"
-
-volumes:
-  mongo-data:
