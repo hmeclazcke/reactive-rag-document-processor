@@ -1,6 +1,18 @@
 spring:
   mongodb:
     uri: ${MONGODB_URI:mongodb://root:root@localhost:27017/reactive_rag?authSource=admin}
+  ai:
+    model:
+      embedding: transformers
+    vectorstore:
+      qdrant:
+        host: ${QDRANT_HOST:localhost}
+        port: ${QDRANT_GRPC_PORT:6334}
+        use-tls: ${QDRANT_USE_TLS:false}
+        api-key: ${QDRANT_API_KEY:}
+        collection-name: ${QDRANT_COLLECTION_NAME:rag_chunks}
+        content-field-name: text
+        initialize-schema: true
 
 rag-indexer:
   dataset-id: ${DATASET_ID:local-dataset}

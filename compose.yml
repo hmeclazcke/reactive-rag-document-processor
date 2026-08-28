@@ -23,3 +23,14 @@ services:
     environment:
       ME_CONFIG_MONGODB_URL: mongodb://root:root@mongo:27017/?authSource=admin
       ME_CONFIG_BASICAUTH: "false"
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.0
+    container_name: reactive-rag-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - type: bind
+        source: ${QDRANT_DATA_PATH:-./.docker/qdrant-storage}
+        target: /qdrant/storage

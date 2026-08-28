@@ -1,13 +1,11 @@
 package com.hmeclazcke.ragindexer.application;
 
 import com.hmeclazcke.ragindexer.application.port.out.RagChunkQueryPort;
-import com.hmeclazcke.ragindexer.application.port.out.RagChunkVectorStorePort;
-import com.hmeclazcke.ragindexer.application.port.out.TextEmbeddingPort;
+import com.hmeclazcke.ragindexer.application.port.out.RagChunkIndexPort;
 import com.hmeclazcke.ragindexer.domain.IndexRagChunksResult;
 import com.hmeclazcke.ragindexer.domain.RagChunk;
-import com.hmeclazcke.ragindexer.domain.RagChunkVector;
-import com.hmeclazcke.ragindexer.domain.TextEmbedding;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -15,6 +13,7 @@ import reactor.test.StepVerifier;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,38 +24,33 @@ class IndexRagChunksUseCaseTest {
     private static final int BATCH_SIZE = 2;
 
     private final RagChunkQueryPort ragChunkQuery = mock(RagChunkQueryPort.class);
-    private final TextEmbeddingPort embeddingPort = mock(TextEmbeddingPort.class);
-    private final RagChunkVectorStorePort vectorStore = mock(RagChunkVectorStorePort.class);
+    private final RagChunkIndexPort ragChunkIndex = mock(RagChunkIndexPort.class);
     private final IndexRagChunksUseCase useCase = new IndexRagChunksUseCase(
             ragChunkQuery,
-            embeddingPort,
-            vectorStore
+            ragChunkIndex
     );
 
     @Test
     void indexesRagChunksInBatches() {
         RagChunk first = ragChunk("dataset-1g-gemini:rag:0:0", 0);
         RagChunk second = ragChunk("dataset-1g-gemini:rag:0:1", 1);
-        TextEmbedding firstEmbedding = new TextEmbedding(List.of(0.1F, 0.2F));
-        TextEmbedding secondEmbedding = new TextEmbedding(List.of(0.3F, 0.4F));
-        List<String> expectedTexts = List.of(first.text(), second.text());
-        List<TextEmbedding> embeddings = List.of(firstEmbedding, secondEmbedding);
-        List<RagChunkVector> expectedVectors = List.of(
-                new RagChunkVector(first.id(), DATASET_ID, first.sourceChunkIndex(), first.ragChunkIndex(), firstEmbedding),
-                new RagChunkVector(second.id(), DATASET_ID, second.sourceChunkIndex(), second.ragChunkIndex(), secondEmbedding)
-        );
+        RagChunk third = ragChunk("dataset-1g-gemini:rag:0:2", 2);
+        List<RagChunk> firstBatch = List.of(first, second);
+        List<RagChunk> secondBatch = List.of(third);
 
-        when(ragChunkQuery.findByDatasetId(DATASET_ID, BATCH_SIZE)).thenReturn(Flux.just(first, second));
-        when(embeddingPort.embedAll(expectedTexts)).thenReturn(Mono.just(embeddings));
-        when(vectorStore.saveAll(expectedVectors)).thenReturn(Mono.empty());
+        when(ragChunkQuery.findByDatasetId(DATASET_ID, BATCH_SIZE)).thenReturn(Flux.just(first, second, third));
+        when(ragChunkIndex.indexAll(firstBatch)).thenReturn(Mono.empty());
+        when(ragChunkIndex.indexAll(secondBatch)).thenReturn(Mono.empty());
 
         StepVerifier.create(useCase.index(DATASET_ID, BATCH_SIZE))
-                .expectNext(new IndexRagChunksResult(2))
+                .expectNext(new IndexRagChunksResult(3))
                 .verifyComplete();
 
         verify(ragChunkQuery).findByDatasetId(DATASET_ID, BATCH_SIZE);
-        verify(embeddingPort).embedAll(expectedTexts);
-        verify(vectorStore).saveAll(expectedVectors);
+
+        InOrder inOrder = inOrder(ragChunkIndex);
+        inOrder.verify(ragChunkIndex).indexAll(firstBatch);
+        inOrder.verify(ragChunkIndex).indexAll(secondBatch);
     }
 
     @Test
@@ -67,18 +61,6 @@ class IndexRagChunksUseCaseTest {
     @Test
     void failsWhenBatchSizeIsZero() {
         assertThrows(IllegalArgumentException.class, () -> useCase.index(DATASET_ID, 0));
-    }
-
-    @Test
-    void failsWhenEmbeddingCountDoesNotMatchRagChunkCount() {
-        RagChunk ragChunk = ragChunk("dataset-1g-gemini:rag:0:0", 0);
-
-        when(ragChunkQuery.findByDatasetId(DATASET_ID, BATCH_SIZE)).thenReturn(Flux.just(ragChunk));
-        when(embeddingPort.embedAll(List.of(ragChunk.text()))).thenReturn(Mono.just(List.of()));
-
-        StepVerifier.create(useCase.index(DATASET_ID, BATCH_SIZE))
-                .expectError(IllegalStateException.class)
-                .verify();
     }
 
     private RagChunk ragChunk(String id, int ragChunkIndex) {
