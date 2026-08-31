@@ -1,7 +1,27 @@
 file-query-api:
   top-words:
     max-limit: ${TOP_WORDS_MAX_LIMIT:100}
+  ask-document:
+    retrieved-chunk-limit: ${ASK_DOCUMENT_RETRIEVED_CHUNK_LIMIT:5}
 
 spring:
   mongodb:
     uri: ${MONGODB_URI:mongodb://root:root@localhost:27017/reactive_rag?authSource=admin}
+  ai:
+    model:
+      embedding: ${SPRING_AI_MODEL_EMBEDDING:transformers}
+      chat: ${SPRING_AI_MODEL_CHAT:google-genai}
+    google:
+      genai:
+        api-key: ${GOOGLE_API_KEY:}
+        chat:
+          model: ${GEMINI_MODEL:gemini-3.6-flash}
+    vectorstore:
+      qdrant:
+        host: ${QDRANT_HOST:localhost}
+        port: ${QDRANT_GRPC_PORT:6334}
+        use-tls: ${QDRANT_USE_TLS:false}
+        api-key: ${QDRANT_API_KEY:}
+        collection-name: ${QDRANT_COLLECTION_NAME:rag_chunks}
+        content-field-name: text
+        initialize-schema: false

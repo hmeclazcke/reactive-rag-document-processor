@@ -4,11 +4,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "file-query-api")
 public record FileQueryApiProperties(
-        TopWords topWords
+        TopWords topWords,
+        AskDocument askDocument
 ) {
 
     public record TopWords(
             int maxLimit
+    ) {
+    }
+
+    public record AskDocument(
+            int retrievedChunkLimit
     ) {
     }
 }

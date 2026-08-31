@@ -3,6 +3,8 @@ scalar Long
 type Query {
     topWords(datasetId: String!, limit: Int!): [WordCount!]!
     datasets: [Dataset!]!
+    askDocument(datasetId: String!, question: String!): DocumentAnswer!
+    searchDocumentContext(datasetId: String!, question: String!): [RagChunkSource!]!
 }
 
 type WordCount {
@@ -16,4 +18,20 @@ type Dataset {
     fileSizeBytes: Long!
     chunkSizeBytes: Long!
     chunkCount: Int!
+}
+
+type DocumentAnswer {
+    answer: String!
+    sources: [RagChunkSource!]!
+}
+
+type RagChunkSource {
+    rank: Int!
+    ragChunkId: String!
+    sourceChunkIndex: Int!
+    ragChunkIndex: Int!
+    startByteInclusive: Long!
+    endByteExclusive: Long!
+    textPreview: String!
+    text: String!
 }

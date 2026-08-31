@@ -5,11 +5,16 @@ plugins {
 }
 
 dependencies {
+    implementation(platform("org.springframework.ai:spring-ai-bom:2.0.1"))
+
     implementation("org.springframework.boot:spring-boot-starter")
     implementation("org.springframework.boot:spring-boot-starter-data-mongodb-reactive")
     implementation("org.springframework.boot:spring-boot-starter-graphql")
     implementation("com.graphql-java:graphql-java-extended-scalars:24.0")
     implementation("org.springframework.boot:spring-boot-starter-webflux")
+    implementation("org.springframework.ai:spring-ai-starter-model-google-genai")
+    implementation("org.springframework.ai:spring-ai-starter-model-transformers")
+    implementation("org.springframework.ai:spring-ai-starter-vector-store-qdrant")
     implementation("io.projectreactor:reactor-core")
 
     testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
