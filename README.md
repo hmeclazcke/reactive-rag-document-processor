@@ -1,91 +1,69 @@
 # Reactive RAG Document Processor
 
-A multi-module Java project for generating large UTF-8 text datasets, processing them in independent chunks, storing structured results in MongoDB, indexing local embeddings in Qdrant, and exposing query APIs through GraphQL.
+A Gradle multi-module Java project that processes large UTF-8 text datasets, stores recoverable document chunks in MongoDB, indexes local embeddings in Qdrant, and exposes GraphQL queries for word counts and RAG answers.
 
-Project status: Phase 1 is complete. Phase 2A and the vector-indexing part of Phase 2B are implemented as of August 2026: the processor now creates recoverable RAG chunks, and `rag-indexer` can index those chunks into Qdrant with local embeddings. The GraphQL `askDocument` RAG query is still pending.
+Current status: the end-to-end RAG flow is implemented and tested.
 
-## Current Pipeline
+At query time, a GraphQL question is embedded, searched in Qdrant, recovered from MongoDB, and answered by Gemini using the retrieved context. The current development focus is retrieval quality: using a smaller, better corpus is more useful than generating a huge repetitive synthetic dataset.
 
-Processing pipeline:
+## Stack
 
-```text
-file-generator
-    -> large line-delimited UTF-8 dataset
-    -> file-coordinator
-    -> chunk plan + dataset metadata
-    -> one or more file-processor runs
-    -> MongoDB datasets
-    -> MongoDB chunk_word_counts
-    -> MongoDB rag_chunks
-```
+- Java 25
+- Gradle 9.3.0 with Kotlin DSL
+- Spring Boot 4.1.0
+- Project Reactor
+- Reactive MongoDB
+- Spring GraphQL + WebFlux
+- Spring AI 2.0.1
+- Local Transformers embeddings
+- Qdrant
+- Google Gemini
+- Docker Compose
+- Testcontainers
+- GitHub Actions
 
-Current GraphQL query pipeline:
+This project uses Gradle only. There is no Maven `pom.xml`.
 
-```text
-file-query-api
-    -> MongoDB datasets
-    -> MongoDB chunk_word_counts
-    -> GraphQL datasets/topWords
-```
+## Modules
 
-Vector indexing pipeline:
+| Module | Runtime role | Responsibility |
+| --- | --- | --- |
+| `file-generator` | CLI job | Streams a line-delimited UTF-8 dataset to disk. |
+| `file-coordinator` | CLI job | Calculates byte-range chunks and stores dataset metadata in MongoDB. |
+| `file-processor` | worker job | Processes one source chunk, counts words, creates RAG chunks, and writes results to MongoDB. |
+| `rag-indexer` | CLI job | Reads MongoDB `rag_chunks`, creates local embeddings, and writes vectors to Qdrant. |
+| `file-query-api` | HTTP service | Exposes GraphQL queries for datasets, top words, retrieved context, and document answers. |
 
-```text
-rag-indexer
-    -> reads MongoDB rag_chunks
-    -> converts each chunk to a Spring AI Document
-    -> Spring AI Transformers creates local embeddings
-    -> Spring AI Qdrant VectorStore writes vectors to Qdrant
-```
-
-The next query-side RAG step will be:
-
-```text
-GraphQL question
-    -> question embedding
-    -> Qdrant similarity search
-    -> ragChunkIds
-    -> MongoDB rag_chunks
-    -> relevant source text
-    -> Gemini
-    -> answer
-```
-
-Each module is an independent Spring Boot application with a specific runtime role.
-
-## Architecture Diagrams
-
-### System Flow
+## System Flow
 
 ```mermaid
 flowchart LR
-    FG["file-generator"] --> DATA[("Large UTF-8 dataset")]
+    FG["file-generator"] --> DATA[("UTF-8 dataset")]
     DATA --> FC["file-coordinator"]
+    FC --> DATASETS[("MongoDB datasets")]
     FC --> PLAN["ProcessingPlan"]
-    PLAN --> FP["file-processor runs"]
-
-    FP --> WORDS[("MongoDB<br/>chunk_word_counts")]
-    FP --> RAG[("MongoDB<br/>rag_chunks")]
-    FC --> DATASETS[("MongoDB<br/>datasets")]
-
-    DATASETS --> FQA["file-query-api"]
-    WORDS --> FQA
-    FQA --> GQL["GraphQL<br/>datasets / topWords"]
+    PLAN --> FP["file-processor"]
+    FP --> WORDS[("MongoDB chunk_word_counts")]
+    FP --> RAG[("MongoDB rag_chunks")]
 
     RAG --> RI["rag-indexer"]
-    RI --> EMB["Spring AI<br/>local embeddings"]
-    EMB --> QDRANT[("Qdrant<br/>vectors + payload")]
+    RI --> EMB["Local Transformers embeddings"]
+    EMB --> QDRANT[("Qdrant vectors")]
 
-    CLIENT["GraphQL client"] -. "future askDocument" .-> FQA
-    FQA -. "question embedding" .-> EMB
-    FQA -. "similarity search" .-> QDRANT
-    QDRANT -. "ragChunkIds" .-> FQA
-    FQA -. "fetch source text" .-> RAG
-    FQA -. "question + context" .-> GEMINI["Gemini"]
-    GEMINI -. "answer" .-> FQA
+    CLIENT["GraphQL client"] --> API["file-query-api"]
+    DATASETS --> API
+    WORDS --> API
+    API --> QDRANT
+    QDRANT --> API
+    API --> RAG
+    API --> GEMINI["Gemini"]
+    GEMINI --> API
+    API --> CLIENT
 ```
 
-### Data Ownership
+MongoDB is the source of truth for document text. Qdrant is only the vector index used to find likely relevant chunks.
+
+## Data Ownership
 
 ```mermaid
 flowchart TB
@@ -106,11 +84,79 @@ flowchart TB
     RI --> POINTS
     RI --> PAYLOAD
 
-    POINTS -. "similarity search" .-> FUTURE["future askDocument"]
+    POINTS -. "similarity search" .-> ASK["askDocument"]
     PAYLOAD -. "ragChunkId" .-> RAG
 ```
 
-### RAG Indexer Flow
+## Architecture
+
+The code follows a pragmatic Clean Architecture / Hexagonal Architecture style:
+
+- `domain`: pure records and domain rules.
+- `application`: use cases and ports.
+- `adapter/in`: GraphQL and CLI entry points.
+- `adapter/out`: filesystem, MongoDB, Qdrant, Gemini, and Spring AI integrations.
+- `config`: explicit Spring `@Configuration` / `@Bean` wiring.
+
+Spring annotations are kept out of `domain` and `application`. Use cases depend on small ports, not on MongoDB, Qdrant, Gemini, or Spring AI directly.
+
+Blocking external APIs are wrapped carefully. For example, Spring AI `VectorStore.similaritySearch(...)` and `ChatModel.call(...)` are synchronous calls, so their adapters run them on Reactor `boundedElastic`.
+
+## Batch Processing
+
+The processor uses half-open byte ranges:
+
+```text
+[startByteInclusive, endByteExclusive)
+```
+
+Line ownership is based on where the line starts:
+
+- if a chunk starts in the middle of a line, that partial line is skipped;
+- if a line starts inside the chunk but ends after the byte limit, it is still read completely;
+- this avoids duplicate lines, lost lines, and broken UTF-8 characters.
+
+`file-processor` reads each source chunk once. During that single pass it counts words and builds RAG chunks. RAG chunks are written to MongoDB in batches.
+
+## Storage
+
+Main MongoDB collections:
+
+```text
+datasets
+chunk_word_counts
+rag_chunks
+```
+
+Example `rag_chunks` document:
+
+```json
+{
+  "_id": "dataset-books:rag:0:42",
+  "datasetId": "dataset-books",
+  "sourceChunkIndex": 0,
+  "ragChunkIndex": 42,
+  "text": "The original source text for this RAG chunk...",
+  "startByteInclusive": 123456,
+  "endByteExclusive": 131456
+}
+```
+
+Qdrant stores vectors plus metadata copied from each Spring AI `Document`:
+
+```json
+{
+  "datasetId": "dataset-books",
+  "ragChunkId": "dataset-books:rag:0:42",
+  "sourceChunkIndex": 0,
+  "ragChunkIndex": 42,
+  "text": "The original source text for this RAG chunk..."
+}
+```
+
+The `ragChunkId` is the bridge from Qdrant search results back to MongoDB source text.
+
+## RAG Indexer Flow
 
 ```mermaid
 flowchart LR
@@ -130,301 +176,41 @@ flowchart LR
     VECTOR_STORE --> QDRANT[("Qdrant")]
 ```
 
-### Future RAG Query
+## RAG Query Flow
 
 ```mermaid
 sequenceDiagram
-    participant Client as GraphQL client
+    participant Client as GraphQL Client
     participant API as file-query-api
-    participant Embed as Question embedding model
+    participant VectorStore as Spring AI VectorStore
+    participant Embed as Local Transformers
     participant Qdrant as Qdrant
     participant Mongo as MongoDB rag_chunks
     participant Gemini as Gemini
 
     Client->>API: askDocument(datasetId, question)
-    API->>Embed: embed question
-    Embed-->>API: question vector
-    API->>Qdrant: similarity search
-    Qdrant-->>API: top ragChunkIds
-    API->>Mongo: find chunks by ragChunkId
-    Mongo-->>API: source text chunks
-    API->>Gemini: question + retrieved context
+    API->>VectorStore: similaritySearch(question, datasetId, limit)
+    VectorStore->>Embed: embed(question)
+    Embed-->>VectorStore: question vector
+    VectorStore->>Qdrant: search filtered by datasetId
+    Qdrant-->>VectorStore: ranked metadata
+    VectorStore-->>API: ranked ragChunkIds
+    API->>Mongo: find source chunks by ids
+    Mongo-->>API: source text + byte offsets
+    API->>API: keep similarity ranking
+    API->>Gemini: question + recovered context
     Gemini-->>API: grounded answer
-    API-->>Client: answer
+    API-->>Client: answer + sources
 ```
 
-## Modules
-
-| Module | Runtime role | Responsibility |
-| --- | --- | --- |
-| `file-generator` | CLI job | Generates large text datasets by streaming seed lines to disk. Seeds can come from a local resource or from Gemini through Spring AI. |
-| `file-coordinator` | CLI job | Reads file metadata, calculates byte-range chunks, and stores one dataset metadata document in MongoDB. |
-| `file-processor` | worker job | Processes one file chunk in a single pass, counts UTF-8 words, builds recoverable RAG chunks, and persists both outputs in MongoDB. |
-| `file-query-api` | HTTP service | Exposes GraphQL queries for processed datasets and aggregated top words. |
-| `rag-indexer` | CLI job | Reads recoverable RAG chunks from MongoDB and indexes local embeddings into Qdrant through Spring AI VectorStore. |
-
-## Architecture
-
-The code follows a pragmatic Clean Architecture / Hexagonal Architecture style:
-
-- `domain`: pure models and rules.
-- `application`: use cases and ports.
-- `adapter`: concrete inputs and outputs such as CLI, filesystem, MongoDB, GraphQL, Spring AI, Gemini, and Qdrant.
-- `config`: Spring wiring.
-
-Spring is kept at the edges. Core use cases can be tested directly with plain constructors and mocked ports.
-
-For example, `rag-indexer` application code depends on:
-
-```text
-RagChunkQueryPort
-RagChunkIndexPort
-```
-
-It does not depend directly on MongoDB, Qdrant, or Spring AI. Those details live in adapters.
-
-## Data Model
-
-The coordinator owns the `datasets` collection:
-
-```json
-{
-  "_id": "dataset-1g-gemini",
-  "path": "D:/datasets/reactive-rag-document-processor/dataset-1g-gemini.txt",
-  "fileSizeBytes": 1073741858,
-  "chunkSizeBytes": 268435456,
-  "chunkCount": 5
-}
-```
-
-The processor owns the `chunk_word_counts` collection:
-
-```json
-{
-  "_id": "dataset-1g-gemini:0:java",
-  "datasetId": "dataset-1g-gemini",
-  "chunkIndex": 0,
-  "word": "java",
-  "count": 3910
-}
-```
-
-Word counts are stored as one document per dataset, chunk, and word instead of one large map per chunk. This avoids MongoDB's document size limit and makes aggregation by `datasetId` straightforward.
-
-The processor also owns the `rag_chunks` collection:
-
-```json
-{
-  "_id": "dataset-1g-gemini:rag:0:21479",
-  "datasetId": "dataset-1g-gemini",
-  "sourceChunkIndex": 0,
-  "ragChunkIndex": 21479,
-  "text": "The Spring Boot application initializes a Mono stream...",
-  "startByteInclusive": 170000000,
-  "endByteExclusive": 170007900
-}
-```
-
-The RAG chunk id is stable and recoverable:
-
-```text
-datasetId:rag:sourceChunkIndex:ragChunkIndex
-```
-
-Qdrant stores vector points created by Spring AI. Each point contains:
-
-```text
-id      = UUID used by Qdrant/Spring AI
-vector  = local embedding for the RAG chunk text
-payload = metadata copied from the Spring AI Document
-```
-
-Payload currently includes:
-
-```json
-{
-  "text": "The Spring Boot application initializes a Mono stream...",
-  "datasetId": "dataset-1g-gemini",
-  "sourceChunkIndex": 0,
-  "ragChunkIndex": 21479,
-  "ragChunkId": "dataset-1g-gemini:rag:0:21479"
-}
-```
-
-MongoDB remains the source of truth for the original recoverable text. Qdrant is used for vector similarity search.
-
-## Chunk Processing Semantics
-
-Chunks use half-open byte ranges:
-
-```text
-[startByteInclusive, endByteExclusive)
-```
-
-The logical unit of ownership is a full line:
-
-- if a chunk starts in the middle of a line, that partial line is skipped;
-- if a line starts before `endByteExclusive`, the processor keeps reading until that line ends;
-- this prevents double counting and avoids cutting words or RAG chunks between chunks.
-
-The processor uses `FileChannel`, `ByteBuffer`, and an incremental UTF-8 decoder. It does not load the whole chunk into memory and does not build one giant `String`.
-
-During the same pass over the file chunk, the processor:
-
-```text
-counts words
-    +
-accumulates complete lines into RAG chunks
-    +
-persists RAG chunks in batches
-```
-
-This avoids reading the same byte range twice.
-
-## Configuration
-
-Each module is configured through its own `application.yml`. The committed files use Spring Boot placeholders, so local values can be provided either through command-line arguments, environment variables, or a local profile file.
-
-Common MongoDB configuration:
-
-```yaml
-spring:
-  mongodb:
-    uri: mongodb://root:root@localhost:27017/reactive_rag?authSource=admin
-```
-
-This project uses `spring.mongodb.uri`.
-
-### Docker Data Paths
-
-Local database files should stay outside the repository. The local `.env` file is ignored by Git and can point database storage to another drive:
-
-```env
-MONGO_DATA_PATH=D:/docker-data/reactive-rag-document-processor/mongo-data
-QDRANT_DATA_PATH=D:/docker-data/reactive-rag-document-processor/qdrant-storage
-```
-
-If these variables are not set, Compose falls back to:
-
-```text
-./.docker/mongo-data
-./.docker/qdrant-storage
-```
-
-The `.docker/` directory is ignored by Git.
-
-### Dataset Generation
-
-`file-generator/src/main/resources/application.yml` controls:
-
-```yaml
-file-generator:
-  dataset-path: ./data/dataset.txt
-  minimum-size-bytes: 1048576
-  seed-resource-path: /dataset-seeds/local-seeds.txt
-  seed-provider: local
-```
-
-For Gemini-backed seeds:
-
-```yaml
-file-generator:
-  seed-provider: llm
-
-spring:
-  ai:
-    model:
-      chat: google-genai
-    google:
-      genai:
-        api-key: ${GOOGLE_API_KEY}
-        chat:
-          model: gemini-3.6-flash
-```
-
-The Gemini API key is read from `GOOGLE_API_KEY`. Keys can be created in Google AI Studio: https://aistudio.google.com/api-keys.
-
-Gemini only generates a small set of seed lines. The generator cycles those lines and writes the dataset by streaming to disk, so it never asks the LLM to generate gigabytes of text.
-
-### Chunk Planning
-
-`file-coordinator/src/main/resources/application.yml` controls:
-
-```yaml
-file-coordinator:
-  dataset-id: local-dataset
-  dataset-path: ./data/dataset.txt
-  chunk-size-bytes: 5242880
-```
-
-The coordinator writes the parent dataset metadata to MongoDB.
-
-### Chunk Processing
-
-`file-processor/src/main/resources/application.yml` controls:
-
-```yaml
-file-processor:
-  dataset-id: local-dataset
-  dataset-path: ./data/dataset.txt
-  chunk-index: 0
-  start-byte-inclusive: 0
-  end-byte-exclusive: 1048576
-  max-line-length-bytes: 1048576
-  buffer-size-bytes: 4194304
-  rag-chunk-max-text-length-characters: 8000
-  rag-chunk-batch-size: 1000
-```
-
-The default runtime buffer is 4 MiB. RAG chunks are built from complete lines and persisted in batches.
-
-### RAG Indexing
-
-`rag-indexer/src/main/resources/application.yml` controls:
-
-```yaml
-spring:
-  ai:
-    model:
-      embedding: transformers
-    vectorstore:
-      qdrant:
-        host: localhost
-        port: 6334
-        use-tls: false
-        collection-name: rag_chunks
-        content-field-name: text
-        initialize-schema: true
-
-rag-indexer:
-  dataset-id: local-dataset
-  batch-size: 100
-```
-
-`spring-ai-starter-model-transformers` provides a local embedding model. Spring AI uses it to convert RAG chunk text into embedding vectors. `spring-ai-starter-vector-store-qdrant` writes those vectors to Qdrant through Spring AI's `VectorStore` abstraction.
-
-The Qdrant dashboard is available at:
-
-```text
-http://localhost:6333/dashboard
-```
-
-### Query API
-
-`file-query-api/src/main/resources/application.yml` controls:
-
-```yaml
-file-query-api:
-  top-words:
-    max-limit: 100
-```
+`searchDocumentContext(datasetId, question)` runs the same retrieval and MongoDB recovery steps, but stops before Gemini. It is useful when checking whether Qdrant is returning good context or when Gemini quota is unavailable.
 
 ## Running Locally
 
-Start the local infrastructure:
+Start infrastructure:
 
-```bash
-docker compose up -d mongo mongo-express qdrant
+```powershell
+docker compose -f compose.yml up -d mongo mongo-express qdrant
 ```
 
 Useful local URLs:
@@ -436,25 +222,79 @@ Qdrant Web UI: http://localhost:6333/dashboard
 
 Run modules with the Gradle wrapper:
 
-```bash
-./gradlew :file-generator:bootRun
-./gradlew :file-coordinator:bootRun
-./gradlew :file-processor:bootRun
-./gradlew :file-query-api:bootRun
-./gradlew :rag-indexer:bootRun
+```powershell
+.\gradlew.bat :file-generator:bootRun
+.\gradlew.bat :file-coordinator:bootRun
+.\gradlew.bat :file-processor:bootRun
+.\gradlew.bat :rag-indexer:bootRun
+.\gradlew.bat :file-query-api:bootRun
 ```
 
-On Windows, use `.\gradlew.bat` instead of `./gradlew`.
+On Linux/macOS, use `./gradlew` instead of `.\gradlew.bat`.
 
-Example `rag-indexer` run for the 1 GiB dataset:
+Example query API run:
 
 ```powershell
-.\gradlew.bat :rag-indexer:bootRun --args='--spring.profiles.active=local --rag-indexer.dataset-id=dataset-1g-gemini --rag-indexer.batch-size=100 --spring.ai.vectorstore.qdrant.host=localhost --spring.ai.vectorstore.qdrant.port=6334 --spring.ai.vectorstore.qdrant.collection-name=rag_chunks'
+.\gradlew.bat :file-query-api:bootRun --args='--spring.ai.google.genai.api-key=YOUR_API_KEY --file-query-api.ask-document.retrieved-chunk-limit=5 --spring.ai.vectorstore.qdrant.host=localhost --spring.ai.vectorstore.qdrant.port=6334 --spring.ai.vectorstore.qdrant.collection-name=rag_chunks'
 ```
 
-The indexer does not read the original dataset file. It reads MongoDB `rag_chunks` by `datasetId` and writes embeddings to Qdrant.
+`searchDocumentContext` does not call Gemini, but the service is currently wired with a Gemini `ChatModel` because `askDocument` uses it.
+
+## Configuration
+
+Each module has its own `application.yml`.
+
+Common MongoDB URI:
+
+```yaml
+spring:
+  mongodb:
+    uri: mongodb://root:root@localhost:27017/reactive_rag?authSource=admin
+```
+
+Local database files should stay outside the repository when possible. `compose.yml` supports:
+
+```env
+MONGO_DATA_PATH=D:/docker-data/reactive-rag-document-processor/mongo-data
+QDRANT_DATA_PATH=D:/docker-data/reactive-rag-document-processor/qdrant-storage
+```
+
+If those variables are not set, Compose uses ignored local folders under `./.docker/`.
+
+Important runtime settings:
+
+| Module | Key settings |
+| --- | --- |
+| `file-generator` | `file-generator.dataset-path`, `file-generator.minimum-size-bytes`, `file-generator.seed-provider` |
+| `file-coordinator` | `file-coordinator.dataset-id`, `file-coordinator.dataset-path`, `file-coordinator.chunk-size-bytes` |
+| `file-processor` | `file-processor.dataset-id`, `file-processor.chunk-index`, byte range, buffer size, RAG chunk size |
+| `rag-indexer` | `rag-indexer.dataset-id`, `rag-indexer.batch-size`, Qdrant settings |
+| `file-query-api` | `file-query-api.ask-document.retrieved-chunk-limit`, Gemini key, Qdrant settings |
+
+For large local runs, the processor buffer is intentionally 4 MiB by default:
+
+```yaml
+file-processor:
+  buffer-size-bytes: 4194304
+  rag-chunk-max-text-length-characters: 8000
+  rag-chunk-batch-size: 1000
+```
+
+## Dataset Notes
+
+The normal Gemini seed mode generates a small seed block and cycles those lines to create large files. That is useful for infrastructure and performance tests, but it creates repetitive corpora and is not ideal for RAG quality.
+
+There is also an experimental `llm-unique` seed provider in `file-generator`. It asks Gemini for new baking-related lines batch by batch. It is intentionally not the main path: generating tens or hundreds of MiB of unique LLM text is slow, quota-sensitive, and expensive.
+
+For RAG demos, prefer a real or carefully curated 5-20 MiB corpus over a huge synthetic dataset.
 
 ## GraphQL API
+
+GraphQL is served over HTTP:
+
+```text
+POST http://localhost:8080/graphql
+```
 
 Current schema:
 
@@ -462,105 +302,104 @@ Current schema:
 scalar Long
 
 type Query {
-  topWords(datasetId: String!, limit: Int!): [WordCount!]!
   datasets: [Dataset!]!
+  topWords(datasetId: String!, limit: Int!): [WordCount!]!
+  searchDocumentContext(datasetId: String!, question: String!): [RagChunkSource!]!
+  askDocument(datasetId: String!, question: String!): DocumentAnswer!
+}
+
+type DocumentAnswer {
+  answer: String!
+  sources: [RagChunkSource!]!
+}
+
+type RagChunkSource {
+  rank: Int!
+  ragChunkId: String!
+  sourceChunkIndex: Int!
+  ragChunkIndex: Int!
+  startByteInclusive: Long!
+  endByteExclusive: Long!
+  textPreview: String!
+  text: String!
 }
 ```
 
-List processed datasets:
+Inspect retrieved context without calling Gemini:
 
 ```graphql
 query {
-  datasets {
-    datasetId
-    path
-    fileSizeBytes
-    chunkSizeBytes
-    chunkCount
+  searchDocumentContext(
+    datasetId: "dataset-books"
+    question: "What is the difference between C and C++?"
+  ) {
+    rank
+    ragChunkId
+    sourceChunkIndex
+    ragChunkIndex
+    startByteInclusive
+    endByteExclusive
+    textPreview
   }
 }
 ```
 
-Get the most frequent words for one dataset:
+Ask a question with Gemini answer generation:
 
 ```graphql
 query {
-  topWords(datasetId: "dataset-1g-gemini", limit: 20) {
-    word
-    count
+  askDocument(
+    datasetId: "dataset-books"
+    question: "What is the difference between C and C++?"
+  ) {
+    answer
+    sources {
+      rank
+      ragChunkId
+      textPreview
+    }
   }
 }
 ```
 
-The schema uses a custom `Long` scalar because GraphQL `Int` is 32-bit and cannot represent file sizes such as 6 GiB.
+The custom `Long` scalar is used because GraphQL `Int` is 32-bit and cannot represent large file sizes.
 
 ## Testing
 
 Run the full test suite:
 
-```bash
-./gradlew test
+```powershell
+.\gradlew.bat --no-daemon test
 ```
 
-The project includes:
+The suite includes unit tests, GraphQL slice tests, MongoDB adapter tests, RAG indexing tests, RAG query tests, and a `file-query-api` integration test using Testcontainers with a real MongoDB container.
 
-- unit tests for domain rules and use cases;
-- GraphQL slice tests with `@GraphQlTest`;
-- MongoDB adapter tests;
-- RAG indexer tests around batching and Spring AI `Document` conversion;
-- a `file-query-api` integration test with Spring Boot, HTTP GraphQL, Testcontainers, and a real MongoDB container;
-- GitHub Actions running the Gradle test suite with Java 25.
-
-The integration test uses Testcontainers. Docker must be available, but no manually started local MongoDB instance is required for that test.
+Docker must be available for Testcontainers.
 
 ## Current Status
 
-Phase 1 is complete:
+Implemented:
 
-- large dataset generation by streaming;
-- local and Gemini seed providers;
-- dataset metadata persistence;
-- chunk planning with dataset IDs;
-- UTF-8 streaming word counting;
-- line ownership across byte-range chunks;
-- dataset-scoped MongoDB aggregation;
-- GraphQL `datasets` and `topWords(datasetId, limit)`;
-- `Long` scalar support for large values;
-- local tests, integration tests, and CI.
+- streaming dataset generation;
+- byte-range chunk planning;
+- one-pass UTF-8 chunk processing;
+- MongoDB `datasets`, `chunk_word_counts`, and `rag_chunks`;
+- dataset-scoped word aggregation;
+- local embedding generation with Spring AI Transformers;
+- Qdrant indexing through Spring AI `VectorStore`;
+- GraphQL `datasets`, `topWords`, `searchDocumentContext`, and `askDocument`;
+- source recovery from MongoDB after Qdrant retrieval;
+- answer generation with Gemini;
+- returned RAG sources for debugging and traceability;
+- tests and GitHub Actions.
 
-Phase 2A is implemented:
+Validated locally:
 
-- recoverable RAG chunks are created by `file-processor`;
-- word counts and RAG chunks are produced in one pass over the source file chunk;
-- RAG chunks preserve dataset id, source chunk index, RAG chunk index, text, and byte offsets;
-- RAG chunks are persisted to MongoDB in batches.
+- a 6 GiB synthetic dataset was processed in 3 source chunks after the processor performance refactor;
+- `dataset-books` was processed as a 13.6 MiB real corpus with 1,740 RAG chunks and 1,740 Qdrant vectors;
+- query-side retrieval can be tested without Gemini through `searchDocumentContext`.
 
-Phase 2B vector indexing is implemented:
+Not implemented yet:
 
-- `rag-indexer` exists as a separate CLI job;
-- it reads MongoDB `rag_chunks` lazily by `datasetId`;
-- it indexes chunks in bounded batches;
-- it uses Spring AI Transformers for local embeddings;
-- it uses Spring AI Qdrant `VectorStore` for vector persistence;
-- Qdrant is available in Docker Compose with persistent storage configurable through `.env`.
-
-Manual runs completed locally:
-
-- A 6 GiB dataset was split into 3 chunks. The optimized processor reduced chunk processing from about 29-31 minutes per chunk to about 1 minute per chunk while producing equivalent counts.
-- A 1 GiB synthetic Gemini-seeded dataset produced about 135k RAG chunks.
-- Indexing those RAG chunks into Qdrant with local embeddings took about 47 minutes on the local machine.
-
-## Next Phase: RAG Querying
-
-The next phase will add query-side Retrieval-Augmented Generation:
-
-```text
-askDocument GraphQL query
-    -> embed the user's question
-    -> search Qdrant for similar RAG chunks
-    -> fetch original text from MongoDB by ragChunkId
-    -> send question + context to Gemini
-    -> return the answer through GraphQL
-```
-
-The first version should be a normal GraphQL query returning a single answer. Streaming/subscriptions can be added later.
+- GraphQL subscriptions or streaming responses;
+- Kubernetes Indexed Jobs for parallel processor execution.
