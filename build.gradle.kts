@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "com.hmeclazcke"
-version = "0.1.0-SNAPSHOT"
+version = "1.0.0"
 
 subprojects {
     apply(plugin = "java")
