@@ -3,7 +3,6 @@ Project Reactor provides Flux and Mono for asynchronous pipelines.
 Backpressure helps consumers control the speed of incoming data.
 MongoDB can store document processing results using a reactive driver.
 Docker packages applications with their runtime dependencies.
-Kubernetes Jobs can run containers until their task is complete.
 A file processor can read large documents without loading them into memory.
 A coordinator can split work into chunks and assign them to workers.
 Qdrant stores embeddings for semantic document search.

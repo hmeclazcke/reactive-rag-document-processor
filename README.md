@@ -63,6 +63,8 @@ flowchart LR
 
 MongoDB is the source of truth for document text. Qdrant is only the vector index used to find likely relevant chunks.
 
+The arrows show data flow, not automatic orchestration. The batch modules are CLI jobs. `file-coordinator` stores and prints the processing plan, and each `file-processor` run receives one printed byte range explicitly.
+
 ## Data Ownership
 
 ```mermaid
@@ -207,6 +209,12 @@ sequenceDiagram
 
 ## Running Locally
 
+Prerequisites:
+
+- JDK 25;
+- Docker with the daemon running;
+- a Gemini API key for `askDocument` or the optional `llm` generator mode.
+
 Start infrastructure:
 
 ```powershell
@@ -220,29 +228,52 @@ Mongo Express: http://localhost:8086
 Qdrant Web UI: http://localhost:6333/dashboard
 ```
 
-Run modules with the Gradle wrapper:
+`compose.yml` starts MongoDB, Mongo Express, and Qdrant. The five project modules are not containerized; they run locally through the Gradle wrapper.
+
+The following example runs a small pipeline manually. Each batch command starts one job, performs its work, and finishes.
+
+1. Generate a local dataset:
 
 ```powershell
-.\gradlew.bat :file-generator:bootRun
-.\gradlew.bat :file-coordinator:bootRun
-.\gradlew.bat :file-processor:bootRun
-.\gradlew.bat :rag-indexer:bootRun
-.\gradlew.bat :file-query-api:bootRun
+.\gradlew.bat :file-generator:bootRun --args='--file-generator.dataset-path=./data/demo.txt --file-generator.minimum-size-bytes=1048576 --file-generator.seed-provider=local'
 ```
 
-On Linux/macOS, use `./gradlew` instead of `.\gradlew.bat`.
+2. Create and persist the processing plan:
 
-Example query API run:
+```powershell
+.\gradlew.bat :file-coordinator:bootRun --args='--file-coordinator.dataset-id=demo-v1 --file-coordinator.dataset-path=./data/demo.txt --file-coordinator.chunk-size-bytes=524288'
+```
+
+3. Run one processor for every range printed by the coordinator. This example shows the first range:
+
+```powershell
+.\gradlew.bat :file-processor:bootRun --args='--file-processor.dataset-id=demo-v1 --file-processor.dataset-path=./data/demo.txt --file-processor.chunk-index=0 --file-processor.start-byte-inclusive=0 --file-processor.end-byte-exclusive=524288'
+```
+
+Repeat that command with each `chunkIndex`, `startByteInclusive`, and `endByteExclusive` from the processing plan.
+
+4. Index all stored RAG chunks for the dataset:
+
+```powershell
+.\gradlew.bat :rag-indexer:bootRun --args='--rag-indexer.dataset-id=demo-v1 --rag-indexer.batch-size=100'
+```
+
+5. Start the GraphQL API:
+
 
 ```powershell
 .\gradlew.bat :file-query-api:bootRun --args='--spring.ai.google.genai.api-key=YOUR_API_KEY --file-query-api.ask-document.retrieved-chunk-limit=5 --spring.ai.vectorstore.qdrant.host=localhost --spring.ai.vectorstore.qdrant.port=6334 --spring.ai.vectorstore.qdrant.collection-name=rag_chunks'
 ```
+
+On Linux/macOS, use `./gradlew` instead of `.\gradlew.bat`.
 
 `searchDocumentContext` does not call Gemini, but the service is currently wired with a Gemini `ChatModel` because `askDocument` uses it.
 
 ## Configuration
 
 Each module has its own `application.yml`.
+
+Treat `datasetId` as an immutable processing-run identifier. If the source file or chunking configuration changes, use a new ID. Reusing an ID with different input can leave old derived records in MongoDB or Qdrant.
 
 Common MongoDB URI:
 
@@ -283,8 +314,6 @@ file-processor:
 ## Dataset Notes
 
 The normal Gemini seed mode generates a small seed block and cycles those lines to create large files. That is useful for infrastructure and performance tests, but it creates repetitive corpora and is not ideal for RAG quality.
-
-There is also an experimental `llm-unique` seed provider in `file-generator`. It asks Gemini for new baking-related lines batch by batch. It is intentionally not the main path: generating tens or hundreds of MiB of unique LLM text is slow, quota-sensitive, and expensive.
 
 For RAG demos, prefer a real or carefully curated 5-20 MiB corpus over a huge synthetic dataset.
 
@@ -398,8 +427,3 @@ Validated locally:
 - a 6 GiB synthetic dataset was processed in 3 source chunks after the processor performance refactor;
 - `dataset-books` was processed as a 13.6 MiB real corpus with 1,740 RAG chunks and 1,740 Qdrant vectors;
 - query-side retrieval can be tested without Gemini through `searchDocumentContext`.
-
-Not implemented yet:
-
-- GraphQL subscriptions or streaming responses;
-- Kubernetes Indexed Jobs for parallel processor execution.

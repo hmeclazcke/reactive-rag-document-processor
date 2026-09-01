@@ -33,13 +33,15 @@ public class ProcessFileChunkUseCase {
     }
 
     public Mono<ProcessedFileChunk> process(String datasetId, Path datasetPath, FileChunk chunk) {
-        ProcessingState state = new ProcessingState();
+        return Mono.defer(() -> {
+            ProcessingState state = new ProcessingState();
 
-        return chunkProcessor.process(datasetId, datasetPath, chunk)
-                // The adapter scans the file once. RAG batches are persisted as they are emitted;
-                // word counts are emitted once at the end because they need the full chunk result.
-                .concatMap(event -> persist(event, datasetId, chunk, state), 1)
-                .then(Mono.fromSupplier(state::processedFileChunk));
+            return chunkProcessor.process(datasetId, datasetPath, chunk)
+                    // The adapter scans the file once. RAG batches are persisted as they are emitted;
+                    // word counts are emitted once at the end because they need the full chunk result.
+                    .concatMap(event -> persist(event, datasetId, chunk, state), 1)
+                    .then(Mono.fromSupplier(state::processedFileChunk));
+        });
     }
 
     private Mono<Void> persist(

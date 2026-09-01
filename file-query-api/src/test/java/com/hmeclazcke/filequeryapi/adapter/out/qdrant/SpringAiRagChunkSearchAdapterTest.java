@@ -60,17 +60,31 @@ class SpringAiRagChunkSearchAdapterTest {
     }
 
     @Test
-    void ignoresDocumentsWithoutRagChunkIdMetadata() {
-        Document documentWithoutRagChunkId = new Document(
+    void ignoresMissingRagChunkIdWithoutChangingVectorStoreOrder() {
+        Document first = new Document(
                 "document-1",
-                "source text",
+                "first source text",
+                Map.of("ragChunkId", "dataset-1g-gemini:rag:0:1")
+        );
+        Document documentWithoutRagChunkId = new Document(
+                "document-2",
+                "source text without id",
                 Map.of("datasetId", DATASET_ID)
+        );
+        Document second = new Document(
+                "document-3",
+                "second source text",
+                Map.of("ragChunkId", "dataset-1g-gemini:rag:0:2")
         );
 
         when(vectorStore.similaritySearch(org.mockito.ArgumentMatchers.any(SearchRequest.class)))
-                .thenReturn(List.of(documentWithoutRagChunkId));
+                .thenReturn(List.of(first, documentWithoutRagChunkId, second));
 
         StepVerifier.create(adapter.findSimilarRagChunkIds(DATASET_ID, QUESTION, LIMIT))
+                .expectNext(
+                        "dataset-1g-gemini:rag:0:1",
+                        "dataset-1g-gemini:rag:0:2"
+                )
                 .verifyComplete();
     }
 }

@@ -38,7 +38,13 @@ public class SpringAiRagChunkSearchAdapter implements RagChunkSearchPort {
         return Mono.fromSupplier(() -> vectorStore.similaritySearch(searchRequest))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMapMany(Flux::fromIterable)
-                .flatMap(document -> Mono.justOrEmpty(ragChunkIdFrom(document)));
+                .handle((document, sink) -> {
+                    String ragChunkId = ragChunkIdFrom(document);
+
+                    if (ragChunkId != null) {
+                        sink.next(ragChunkId);
+                    }
+                });
     }
 
     private Filter.Expression datasetFilter(String datasetId) {

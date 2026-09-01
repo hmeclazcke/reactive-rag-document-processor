@@ -13,7 +13,6 @@ public record FileGeneratorProperties(
 ) {
     public enum SeedProvider {
         LOCAL,
-        LLM,
-        LLM_UNIQUE
+        LLM
     }
 }

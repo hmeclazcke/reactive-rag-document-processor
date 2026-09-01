@@ -3,7 +3,6 @@ package com.hmeclazcke.filegenerator.config;
 import com.hmeclazcke.filegenerator.adapter.in.cli.GenerateDatasetRunner;
 import com.hmeclazcke.filegenerator.adapter.out.filesystem.FileSystemDatasetFileAdapter;
 import com.hmeclazcke.filegenerator.adapter.out.gemini.SpringAiGeminiGeneratedSeedTextAdapter;
-import com.hmeclazcke.filegenerator.adapter.out.gemini.SpringAiGeminiUniqueBakingTextSeedProvider;
 import com.hmeclazcke.filegenerator.adapter.out.llm.LlmTextSeedProvider;
 import com.hmeclazcke.filegenerator.adapter.out.local.LocalTextSeedProvider;
 import com.hmeclazcke.filegenerator.application.DatasetGenerator;
@@ -69,13 +68,4 @@ public class FileGeneratorConfiguration {
         return new SpringAiGeminiGeneratedSeedTextAdapter(chatModel);
     }
 
-    @Bean
-    @ConditionalOnProperty(
-            prefix = "file-generator",
-            name = "seed-provider",
-            havingValue = "llm-unique"
-    )
-    public TextSeedProviderPort uniqueLlmTextSeedProvider(ChatModel chatModel) {
-        return new SpringAiGeminiUniqueBakingTextSeedProvider(chatModel);
-    }
 }

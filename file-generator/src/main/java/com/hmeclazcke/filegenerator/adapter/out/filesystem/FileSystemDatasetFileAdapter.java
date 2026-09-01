@@ -13,6 +13,7 @@ import java.nio.file.Path;
 public class FileSystemDatasetFileAdapter implements DatasetFilePort {
 
     private static final String COULD_NOT_CREATE_DATASET_FILE = "Could not create dataset file";
+    private static final String PARTIAL_FILE_SUFFIX = ".part";
 
     private final TextSeedProviderPort textSeedProvider;
 
@@ -36,9 +37,25 @@ public class FileSystemDatasetFileAdapter implements DatasetFilePort {
 
     private void createDatasetFile(Path datasetPath, long minimumSizeBytes) throws IOException {
         createParentDirectories(datasetPath);
+        Path partialDatasetPath = datasetPath.resolveSibling(datasetPath.getFileName() + PARTIAL_FILE_SUFFIX);
 
-        try (OutputStream outputStream = new BufferedOutputStream(Files.newOutputStream(datasetPath))) {
-            writeLinesUntilMinimumSize(outputStream, minimumSizeBytes);
+        try {
+            try (OutputStream outputStream = new BufferedOutputStream(Files.newOutputStream(partialDatasetPath))) {
+                writeLinesUntilMinimumSize(outputStream, minimumSizeBytes);
+            }
+
+            Files.move(partialDatasetPath, datasetPath);
+        } catch (IOException | RuntimeException exception) {
+            deletePartialFile(partialDatasetPath, exception);
+            throw exception;
+        }
+    }
+
+    private void deletePartialFile(Path partialDatasetPath, Exception originalException) {
+        try {
+            Files.deleteIfExists(partialDatasetPath);
+        } catch (IOException cleanupException) {
+            originalException.addSuppressed(cleanupException);
         }
     }
 

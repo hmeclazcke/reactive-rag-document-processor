@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -33,6 +34,7 @@ class FileSystemDatasetFileAdapterTest {
 
         assertTrue(Files.exists(datasetPath));
         assertTrue(Files.size(datasetPath) >= MINIMUM_SIZE_BYTES);
+        assertFalse(Files.exists(tempDir.resolve("dataset.txt.part")));
     }
 
     @Test
@@ -85,5 +87,25 @@ class FileSystemDatasetFileAdapterTest {
         adapter.create(datasetPath, MINIMUM_SIZE_BYTES);
 
         assertTrue(Files.exists(datasetPath));
+    }
+
+    @Test
+    void doesNotLeavePartialDatasetWhenGenerationFails() {
+        Path datasetPath = tempDir.resolve("dataset.txt");
+        Path partialDatasetPath = tempDir.resolve("dataset.txt.part");
+
+        TextSeedProviderPort textSeedProvider = mock(TextSeedProviderPort.class);
+        when(textSeedProvider.nextLine())
+                .thenReturn(SAMPLE_LINE)
+                .thenThrow(new IllegalStateException("Seed generation failed"));
+        FileSystemDatasetFileAdapter adapter = new FileSystemDatasetFileAdapter(textSeedProvider);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> adapter.create(datasetPath, MINIMUM_SIZE_BYTES)
+        );
+
+        assertFalse(Files.exists(datasetPath));
+        assertFalse(Files.exists(partialDatasetPath));
     }
 }
